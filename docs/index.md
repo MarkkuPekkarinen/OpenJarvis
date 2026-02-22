@@ -1,6 +1,8 @@
 ---
 title: OpenJarvis
 description: Programming abstractions for on-device AI
+hide:
+  - navigation
 ---
 
 # OpenJarvis
