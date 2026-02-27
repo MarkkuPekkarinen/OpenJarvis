@@ -36,6 +36,9 @@ class JarvisSystem:
     scheduler_store: Optional[Any] = None  # SchedulerStore
     scheduler: Optional[Any] = None  # TaskScheduler
     container_runner: Optional[Any] = None  # ContainerRunner
+    workflow_engine: Optional[Any] = None  # WorkflowEngine
+    session_store: Optional[Any] = None  # SessionStore
+    capability_policy: Optional[Any] = None  # CapabilityPolicy
 
     def ask(
         self,
@@ -158,17 +161,50 @@ class JarvisSystem:
         if telemetry_events:
             total_energy = sum(e.get("energy_joules", 0.0) for e in telemetry_events)
             total_latency = sum(e.get("latency", 0.0) for e in telemetry_events)
-            power_vals = [e.get("power_watts", 0.0) for e in telemetry_events if e.get("power_watts", 0.0) > 0]
-            util_vals = [e.get("gpu_utilization_pct", 0.0) for e in telemetry_events if e.get("gpu_utilization_pct", 0.0) > 0]
-            throughput_vals = [e.get("throughput_tok_per_sec", 0.0) for e in telemetry_events if e.get("throughput_tok_per_sec", 0.0) > 0]
+            power_vals = [
+                e.get("power_watts", 0.0)
+                for e in telemetry_events
+                if e.get("power_watts", 0.0) > 0
+            ]
+            util_vals = [
+                e.get("gpu_utilization_pct", 0.0)
+                for e in telemetry_events
+                if e.get("gpu_utilization_pct", 0.0) > 0
+            ]
+            throughput_vals = [
+                e.get("throughput_tok_per_sec", 0.0)
+                for e in telemetry_events
+                if e.get("throughput_tok_per_sec", 0.0) > 0
+            ]
             _telemetry = {
                 "ttft": telemetry_events[0].get("ttft", 0.0),
                 "energy_joules": total_energy,
-                "power_watts": sum(power_vals) / len(power_vals) if power_vals else 0.0,
-                "gpu_utilization_pct": sum(util_vals) / len(util_vals) if util_vals else 0.0,
-                "throughput_tok_per_sec": sum(throughput_vals) / len(throughput_vals) if throughput_vals else 0.0,
-                "gpu_memory_used_gb": max((e.get("gpu_memory_used_gb", 0.0) for e in telemetry_events), default=0.0),
-                "gpu_temperature_c": max((e.get("gpu_temperature_c", 0.0) for e in telemetry_events), default=0.0),
+                "power_watts": (
+                    sum(power_vals) / len(power_vals)
+                    if power_vals else 0.0
+                ),
+                "gpu_utilization_pct": (
+                    sum(util_vals) / len(util_vals)
+                    if util_vals else 0.0
+                ),
+                "throughput_tok_per_sec": (
+                    sum(throughput_vals) / len(throughput_vals)
+                    if throughput_vals else 0.0
+                ),
+                "gpu_memory_used_gb": max(
+                    (
+                        e.get("gpu_memory_used_gb", 0.0)
+                        for e in telemetry_events
+                    ),
+                    default=0.0,
+                ),
+                "gpu_temperature_c": max(
+                    (
+                        e.get("gpu_temperature_c", 0.0)
+                        for e in telemetry_events
+                    ),
+                    default=0.0,
+                ),
                 "inference_calls": len(telemetry_events),
                 "total_inference_latency": total_latency,
             }
@@ -254,6 +290,8 @@ class SystemBuilder:
         self._bus: Optional[EventBus] = None
         self._sandbox: Optional[bool] = None
         self._scheduler: Optional[bool] = None
+        self._workflow: Optional[bool] = None
+        self._sessions: Optional[bool] = None
 
     def engine(self, key: str) -> SystemBuilder:
         self._engine_key = key
@@ -285,6 +323,14 @@ class SystemBuilder:
 
     def scheduler(self, enabled: bool) -> SystemBuilder:
         self._scheduler = enabled
+        return self
+
+    def workflow(self, enabled: bool) -> SystemBuilder:
+        self._workflow = enabled
+        return self
+
+    def sessions(self, enabled: bool) -> SystemBuilder:
+        self._sessions = enabled
         return self
 
     def event_bus(self, bus: EventBus) -> SystemBuilder:
@@ -377,6 +423,15 @@ class SystemBuilder:
         # Set up scheduler
         scheduler_store, task_scheduler = self._setup_scheduler(config, bus)
 
+        # Set up workflow engine
+        workflow_engine = self._setup_workflow(config, bus)
+
+        # Set up session store
+        session_store = self._setup_sessions(config)
+
+        # Set up capability policy
+        capability_policy = self._setup_capabilities(config)
+
         return JarvisSystem(
             config=config,
             bus=bus,
@@ -393,6 +448,9 @@ class SystemBuilder:
             scheduler_store=scheduler_store,
             scheduler=task_scheduler,
             container_runner=container_runner,
+            workflow_engine=workflow_engine,
+            session_store=session_store,
+            capability_policy=capability_policy,
         )
 
     def _resolve_engine(self, config: JarvisConfig):
@@ -731,6 +789,58 @@ class SystemBuilder:
             return store, sched
         except Exception:
             return None, None
+
+    def _setup_workflow(self, config, bus):
+        """Set up workflow engine if enabled."""
+        workflow_enabled = (
+            self._workflow if self._workflow is not None
+            else config.workflow.enabled
+        )
+        if not workflow_enabled:
+            return None
+        try:
+            from openjarvis.workflow.engine import WorkflowEngine
+
+            return WorkflowEngine(
+                bus=bus,
+                max_parallel=config.workflow.max_parallel,
+                default_node_timeout=config.workflow.default_node_timeout,
+            )
+        except Exception:
+            return None
+
+    def _setup_sessions(self, config):
+        """Set up session store if enabled."""
+        sessions_enabled = (
+            self._sessions if self._sessions is not None
+            else config.sessions.enabled
+        )
+        if not sessions_enabled:
+            return None
+        try:
+            from openjarvis.sessions.session import SessionStore
+
+            return SessionStore(
+                db_path=config.sessions.db_path,
+                max_age_hours=config.sessions.max_age_hours,
+                consolidation_threshold=config.sessions.consolidation_threshold,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _setup_capabilities(config):
+        """Set up capability policy if enabled."""
+        if not config.security.capabilities.enabled:
+            return None
+        try:
+            from openjarvis.security.capabilities import CapabilityPolicy
+
+            return CapabilityPolicy(
+                policy_path=config.security.capabilities.policy_path or None,
+            )
+        except Exception:
+            return None
 
     @staticmethod
     def _discover_external_mcp(server_cfg) -> List[BaseTool]:

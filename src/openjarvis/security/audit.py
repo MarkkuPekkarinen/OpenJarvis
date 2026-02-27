@@ -1,11 +1,12 @@
-"""Audit logger — persist security events to SQLite."""
+"""Audit logger — persist security events to SQLite with Merkle hash chain."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from openjarvis.core.config import DEFAULT_CONFIG_DIR
 from openjarvis.core.events import Event, EventBus, EventType
@@ -45,21 +46,42 @@ class AuditLogger:
                 event_type  TEXT,
                 findings_json TEXT,
                 content_preview TEXT,
-                action_taken TEXT
+                action_taken TEXT,
+                row_hash    TEXT DEFAULT '',
+                prev_hash   TEXT DEFAULT ''
             )
             """
         )
         self._conn.commit()
+        self._migrate_schema()
 
         if bus is not None:
             bus.subscribe(EventType.SECURITY_SCAN, self._on_event)
             bus.subscribe(EventType.SECURITY_ALERT, self._on_event)
             bus.subscribe(EventType.SECURITY_BLOCK, self._on_event)
 
+    def _migrate_schema(self) -> None:
+        """Add row_hash/prev_hash columns if missing (schema migration)."""
+        columns = {
+            row[1]
+            for row in self._conn.execute(
+                "PRAGMA table_info(security_events)"
+            ).fetchall()
+        }
+        if "row_hash" not in columns:
+            self._conn.execute(
+                "ALTER TABLE security_events ADD COLUMN row_hash TEXT DEFAULT ''"
+            )
+        if "prev_hash" not in columns:
+            self._conn.execute(
+                "ALTER TABLE security_events ADD COLUMN prev_hash TEXT DEFAULT ''"
+            )
+        self._conn.commit()
+
     # -- public API ----------------------------------------------------------
 
     def log(self, event: SecurityEvent) -> None:
-        """Insert a security event into the audit log."""
+        """Insert a security event into the audit log with Merkle hash chain."""
         findings_json = json.dumps([
             {
                 "pattern_name": f.pattern_name,
@@ -71,11 +93,21 @@ class AuditLogger:
             }
             for f in event.findings
         ])
+
+        # Compute hash chain
+        prev_hash = self.tail_hash()
+        hash_input = (
+            f"{prev_hash}|{event.timestamp}|{event.event_type.value}"
+            f"|{findings_json}|{event.content_preview}|{event.action_taken}"
+        )
+        row_hash = hashlib.sha256(hash_input.encode()).hexdigest()
+
         self._conn.execute(
             """
             INSERT INTO security_events
-                (timestamp, event_type, findings_json, content_preview, action_taken)
-            VALUES (?, ?, ?, ?, ?)
+                (timestamp, event_type, findings_json, content_preview,
+                 action_taken, row_hash, prev_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event.timestamp,
@@ -83,6 +115,8 @@ class AuditLogger:
                 findings_json,
                 event.content_preview,
                 event.action_taken,
+                row_hash,
+                prev_hash,
             ),
         )
         self._conn.commit()
@@ -138,6 +172,49 @@ class AuditLogger:
                 )
             )
         return events
+
+    def tail_hash(self) -> str:
+        """Return the hash of the last row in the chain, or empty string."""
+        row = self._conn.execute(
+            "SELECT row_hash FROM security_events ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        return row[0] if row and row[0] else ""
+
+    def verify_chain(self) -> Tuple[bool, Optional[int]]:
+        """Verify the Merkle hash chain integrity.
+
+        Returns
+        -------
+        tuple
+            ``(True, None)`` if the chain is valid, or
+            ``(False, row_id)`` where *row_id* is the first broken link.
+        """
+        rows = self._conn.execute(
+            "SELECT id, timestamp, event_type, findings_json,"
+            " content_preview, action_taken, row_hash, prev_hash"
+            " FROM security_events ORDER BY id"
+        ).fetchall()
+
+        expected_prev = ""
+        for row in rows:
+            rid, ts, etype, fj, preview, action, stored_hash, stored_prev = row
+            # Skip rows that predate the Merkle upgrade
+            if not stored_hash:
+                continue
+            # Verify prev_hash link
+            if stored_prev != expected_prev:
+                return False, rid
+            # Verify row_hash
+            hash_input = (
+                f"{stored_prev}|{ts}|{etype}"
+                f"|{fj}|{preview}|{action}"
+            )
+            computed = hashlib.sha256(hash_input.encode()).hexdigest()
+            if computed != stored_hash:
+                return False, rid
+            expected_prev = stored_hash
+
+        return True, None
 
     def count(self) -> int:
         """Return the total number of logged security events."""

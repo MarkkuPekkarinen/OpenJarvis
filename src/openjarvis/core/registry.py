@@ -133,6 +133,10 @@ class LearningRegistry(RegistryBase[Any]):
     """Registry for learning policies."""
 
 
+class SkillRegistry(RegistryBase[Any]):
+    """Registry for skill manifests."""
+
+
 __all__ = [
     "AgentRegistry",
     "BenchmarkRegistry",
@@ -143,5 +147,6 @@ __all__ = [
     "ModelRegistry",
     "RegistryBase",
     "RouterPolicyRegistry",
+    "SkillRegistry",
     "ToolRegistry",
 ]

@@ -139,6 +139,23 @@ class NativeReActAgent(ToolUsingAgent):
                 name=parsed["action"],
                 arguments=parsed["action_input"] or "{}",
             )
+
+            # Loop guard check before execution
+            if self._loop_guard:
+                verdict = self._loop_guard.check_call(
+                    tool_call.name, tool_call.arguments,
+                )
+                if verdict.blocked:
+                    tool_result = ToolResult(
+                        tool_name=tool_call.name,
+                        content=f"Loop guard: {verdict.reason}",
+                        success=False,
+                    )
+                    all_tool_results.append(tool_result)
+                    observation = f"Observation: {tool_result.content}"
+                    messages.append(Message(role=Role.USER, content=observation))
+                    continue
+
             tool_result = self._executor.execute(tool_call)
             all_tool_results.append(tool_result)
 

@@ -128,6 +128,18 @@ export function useChat(conversationId: string | null, model: string) {
                 phase: `Running ${data.tool}...`,
                 activeToolCalls: [...toolCalls],
               }));
+              // Update message with live tool call progress
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.role === 'assistant') {
+                  updated[updated.length - 1] = {
+                    ...last,
+                    toolCalls: [...toolCalls],
+                  };
+                }
+                return updated;
+              });
             } catch {}
           } else if (eventName === 'tool_call_end') {
             try {
@@ -143,6 +155,18 @@ export function useChat(conversationId: string | null, model: string) {
                 phase: 'Generating response...',
                 activeToolCalls: [...toolCalls],
               }));
+              // Update message with completed tool call
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.role === 'assistant') {
+                  updated[updated.length - 1] = {
+                    ...last,
+                    toolCalls: [...toolCalls],
+                  };
+                }
+                return updated;
+              });
             } catch {}
           } else {
             // Content chunk (no event name or event: content)

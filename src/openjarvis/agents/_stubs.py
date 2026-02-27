@@ -139,6 +139,41 @@ class BaseAgent(ABC):
             metadata={"max_turns_exceeded": True},
         )
 
+    def _check_continuation(
+        self,
+        result: dict,
+        messages: list,
+        *,
+        max_continuations: int = 2,
+    ) -> str:
+        """Re-prompt on ``finish_reason == "length"`` to get complete output.
+
+        Returns the concatenated content after up to *max_continuations*
+        follow-up generate calls.
+        """
+        content = result.get("content", "")
+        finish_reason = result.get("finish_reason", "")
+
+        for _ in range(max_continuations):
+            if finish_reason != "length":
+                break
+            # Append what we have so far and ask the model to continue
+            from openjarvis.core.types import Message, Role
+
+            messages.append(Message(role=Role.ASSISTANT, content=content))
+            messages.append(
+                Message(
+                    role=Role.USER,
+                    content="Continue from where you left off.",
+                ),
+            )
+            cont = self._generate(messages)
+            continuation = cont.get("content", "")
+            content += continuation
+            finish_reason = cont.get("finish_reason", "")
+
+        return content
+
     @staticmethod
     def _strip_think_tags(text: str) -> str:
         """Remove ``<think>...</think>`` blocks from model output.
@@ -148,9 +183,9 @@ class BaseAgent(ABC):
         begins directly with reasoning text followed by ``</think>``.
         """
         # Full <think>...</think> blocks
-        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+        text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL | re.IGNORECASE)
         # Leading content before a bare </think> (no opening tag)
-        text = re.sub(r"^.*?</think>\s*", "", text, flags=re.DOTALL)
+        text = re.sub(r"^.*?</think>\s*", "", text, flags=re.DOTALL | re.IGNORECASE)
         return text.strip()
 
     @abstractmethod
@@ -182,6 +217,9 @@ class ToolUsingAgent(BaseAgent):
         max_turns: int = 10,
         temperature: float = 0.7,
         max_tokens: int = 1024,
+        loop_guard_config: Optional[Any] = None,
+        capability_policy: Optional[Any] = None,
+        agent_id: Optional[str] = None,
     ) -> None:
         super().__init__(
             engine, model, bus=bus,
@@ -190,8 +228,27 @@ class ToolUsingAgent(BaseAgent):
         from openjarvis.tools._stubs import ToolExecutor
 
         self._tools = tools or []
-        self._executor = ToolExecutor(self._tools, bus=bus)
+        _aid = agent_id or getattr(self, "agent_id", "")
+        self._executor = ToolExecutor(
+            self._tools, bus=bus,
+            capability_policy=capability_policy,
+            agent_id=_aid,
+        )
         self._max_turns = max_turns
+
+        # Loop guard
+        self._loop_guard = None
+        try:
+            from openjarvis.agents.loop_guard import LoopGuard, LoopGuardConfig
+
+            if loop_guard_config is None:
+                loop_guard_config = LoopGuardConfig()
+            elif isinstance(loop_guard_config, dict):
+                loop_guard_config = LoopGuardConfig(**loop_guard_config)
+            if loop_guard_config.enabled:
+                self._loop_guard = LoopGuard(loop_guard_config, bus=bus)
+        except ImportError:
+            pass
 
 
 __all__ = ["AgentContext", "AgentResult", "BaseAgent", "ToolUsingAgent"]

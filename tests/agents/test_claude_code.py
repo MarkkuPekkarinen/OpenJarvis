@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openjarvis.agents._stubs import AgentResult
 import openjarvis.agents  # noqa: F401 -- trigger registration
+from openjarvis.agents._stubs import AgentResult
 from openjarvis.agents.claude_code import (
     _OUTPUT_END,
     _OUTPUT_START,

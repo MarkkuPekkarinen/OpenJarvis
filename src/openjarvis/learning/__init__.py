@@ -35,6 +35,15 @@ def ensure_registered() -> None:
     except ImportError:
         pass
 
+    try:
+        from openjarvis.learning.bandit_router import (
+            ensure_registered as _reg_bandit,
+        )
+
+        _reg_bandit()
+    except ImportError:
+        pass
+
     from openjarvis.learning.trace_policy import (
         ensure_registered as _reg_trace,
     )

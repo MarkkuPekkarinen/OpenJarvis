@@ -126,6 +126,18 @@ class NativeOpenHandsAgent(ToolUsingAgent):
                 break
         return messages
 
+    @staticmethod
+    def _strip_tool_call_text(text: str) -> str:
+        """Remove raw tool call artifacts from final output."""
+        # Remove Action: ... Action Input: ... blocks
+        text = re.sub(
+            r"Action:\s*.+?(?:Action Input:\s*.+?)?(?=\n\n|\Z)",
+            "", text, flags=re.DOTALL | re.IGNORECASE,
+        )
+        # Remove <tool_call>...</tool_call> or </tool_name> blocks
+        text = re.sub(r"<tool_call>.*?</\w+>", "", text, flags=re.DOTALL)
+        return text.strip()
+
     def _extract_code(self, text: str) -> str | None:
         """Extract Python code from markdown code blocks."""
         match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
@@ -174,6 +186,16 @@ class NativeOpenHandsAgent(ToolUsingAgent):
                     params[key] = int(val)
                 except ValueError:
                     params[key] = val
+            # key: value format (common in GLM models)
+            if not params:
+                for m in re.finditer(
+                    r"(\w+)\s*:\s*(.+?)(?=\n\w+\s*:|$)", raw_params, re.DOTALL
+                ):
+                    key, val = m.group(1), m.group(2).strip().strip("\"'")
+                    try:
+                        params[key] = int(val)
+                    except ValueError:
+                        params[key] = val
             if params:
                 return (tool_name, _json.dumps(params))
             return (tool_name, "{}")
@@ -214,8 +236,16 @@ class NativeOpenHandsAgent(ToolUsingAgent):
             try:
                 result = self._generate(direct_messages)
                 content = self._strip_think_tags(result.get("content", ""))
+                usage = result.get("usage", {})
                 self._emit_turn_end(turns=1)
-                return AgentResult(content=content, tool_results=[], turns=1)
+                return AgentResult(
+                    content=content, tool_results=[], turns=1,
+                    metadata={
+                        "prompt_tokens": usage.get("prompt_tokens", 0),
+                        "completion_tokens": usage.get("completion_tokens", 0),
+                        "total_tokens": usage.get("total_tokens", 0),
+                    },
+                )
             except Exception as exc:
                 error_str = str(exc)
                 if "400" in error_str:
@@ -243,6 +273,7 @@ class NativeOpenHandsAgent(ToolUsingAgent):
         all_tool_results: list[ToolResult] = []
         turns = 0
         last_content = ""
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         for _turn in range(self._max_turns):
             turns += 1
@@ -268,6 +299,11 @@ class NativeOpenHandsAgent(ToolUsingAgent):
                     turns=turns,
                     metadata={"error": True},
                 )
+
+            # Accumulate usage from this generate call
+            usage = result.get("usage", {})
+            for k in total_usage:
+                total_usage[k] += usage.get(k, 0)
 
             content = result.get("content", "")
             # Strip think tags so they don't interfere with parsing
@@ -316,14 +352,19 @@ class NativeOpenHandsAgent(ToolUsingAgent):
 
             # No code or tool call -- this is the final answer
             content = self._strip_think_tags(content)
+            content = self._strip_tool_call_text(content)
             self._emit_turn_end(turns=turns)
             return AgentResult(
-                content=content, tool_results=all_tool_results, turns=turns
+                content=content, tool_results=all_tool_results, turns=turns,
+                metadata=total_usage,
             )
 
         # Max turns
         final = self._strip_think_tags(last_content) or "Maximum turns reached."
-        return self._max_turns_result(all_tool_results, turns, content=final)
+        final = self._strip_tool_call_text(final)
+        result = self._max_turns_result(all_tool_results, turns, content=final)
+        result.metadata.update(total_usage)
+        return result
 
 
 __all__ = ["NativeOpenHandsAgent"]

@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-OpenJarvis is a research framework for studying on-device AI systems. Phase 13 (Install, Hosting, Cross-Hardware, Eval) complete. Five composable pillars: Intelligence, Engine, Agents, Tools (with storage + MCP), and Learning — with trace-driven learning as a cross-cutting concern. Python SDK (`Jarvis` class), composition layer (`SystemBuilder`/`JarvisSystem`), OpenClaw agent infrastructure, benchmarking framework, Docker deployment all ready. Agent hierarchy refactored: `BaseAgent` (with shared helpers) → `ToolUsingAgent` (tool-using agents), `accepts_tools` introspection, real OpenHands SDK integration. NanoClaw functionality subsumed: `ClaudeCodeAgent` (Claude Agent SDK via Node.js), `WhatsAppBaileysChannel` (Baileys protocol), `ContainerRunner`/`SandboxedAgent` (Docker sandbox), `TaskScheduler` (cron/interval/once with SQLite + MCP tools). ~2244 tests pass (37 skipped for optional deps). Eval framework with 4 benchmarks (SuperGPQA, GAIA, FRAMES, WildChat) and LLM-as-judge scoring via `gpt-5-mini-2025-08-07`. Energy measurement upgraded: `EnergyMonitor` ABC with multi-vendor support (NVIDIA hw counters, AMD amdsmi, Apple Silicon zeus-ml, CPU RAPL sysfs), batch-level energy-per-token accounting (`EnergyBatch`), steady-state detection (`SteadyStateDetector`), `EnergyBenchmark` with warmup phase. Tool system enriched with shared `build_tool_descriptions()` builder; engine tool_calls normalized across OpenAI, Anthropic, Google, and LiteLLM. Phase 13: `jarvis doctor` diagnostic command, `jarvis init` post-setup guidance, MLX engine backend (Apple Silicon → `mlx` recommendation), AMD VRAM/multi-GPU detection, PyTorch MPS device selection, PWA support for browser/desktop hosting, ROCm Docker support.
+OpenJarvis is a research framework for studying on-device AI systems. Phase 21 complete. Five composable pillars: Intelligence, Engine, Agents, Tools (with storage + MCP), and Learning — with trace-driven learning as a cross-cutting concern. ~2940 tests pass (~51 skipped for optional deps). Python SDK (`Jarvis` class), composition layer (`SystemBuilder`/`JarvisSystem`), benchmarking framework, Docker deployment, Tauri desktop app, 40+ tools, 20+ CLI commands, 40+ API endpoints all ready.
 
 ## Build & Development Commands
 
 ```bash
 uv sync --extra dev          # Install deps + dev tools
-uv run pytest tests/ -v      # Run ~2244 tests (37 skipped if optional deps missing)
+uv run pytest tests/ -v      # Run ~2997 tests (~42 skipped if optional deps missing)
 uv run ruff check src/ tests/ # Lint
 uv run jarvis --version      # 1.0.0
 uv run jarvis ask "Hello"    # Query via discovered engine (direct mode)
@@ -35,19 +35,30 @@ uv run jarvis telemetry clear --yes  # Delete all telemetry records
 uv run jarvis channel list           # List available messaging channels
 uv run jarvis channel send slack "Hello"  # Send a message to a channel
 uv run jarvis channel status         # Show channel bridge connection status
-uv run jarvis scheduler create "Check weather" --type cron --value "0 9 * * *"  # Schedule a task
+uv run jarvis scheduler create "Check weather" --type cron --value "0 9 * * *"
 uv run jarvis scheduler list         # List scheduled tasks
-uv run jarvis scheduler pause TASK_ID  # Pause a scheduled task
-uv run jarvis scheduler cancel TASK_ID # Cancel a scheduled task
-uv run jarvis scheduler logs TASK_ID   # Show task run history
 uv run jarvis scheduler start        # Start scheduler daemon (foreground)
 uv run jarvis bench run              # Run all benchmarks against engine
-uv run jarvis bench run -n 20 --json # Run with 20 samples, JSON output
-uv run jarvis bench run -b latency -o results.jsonl  # Specific benchmark to file
 uv run jarvis bench run -b energy -w 5 -n 20 --json  # Energy benchmark with warmup
 uv run jarvis serve --port 8000      # OpenAI-compatible API server (requires openjarvis[server])
 uv run jarvis doctor                 # Run diagnostic checks (config, engines, models, deps)
 uv run jarvis doctor --json          # Machine-readable diagnostics
+uv run jarvis start                  # Start server as background daemon
+uv run jarvis stop                   # Stop background daemon
+uv run jarvis restart                # Restart background daemon
+uv run jarvis status                 # Show daemon status (PID, uptime)
+uv run jarvis chat                   # Interactive REPL (/quit, /clear, /model, /help, /history)
+uv run jarvis chat --agent orchestrator --tools calculator  # REPL with agent
+uv run jarvis agent list             # List registered agents
+uv run jarvis agent info native_react  # Show agent details
+uv run jarvis workflow list          # List available workflows
+uv run jarvis workflow run my_workflow  # Execute a workflow
+uv run jarvis skill list             # List installed skills
+uv run jarvis skill install path/to/skill.toml  # Install a skill
+uv run jarvis vault set MY_KEY       # Store encrypted credential
+uv run jarvis vault get MY_KEY       # Retrieve credential
+uv run jarvis vault list             # List stored keys
+uv run jarvis add github             # Quick-add MCP server (github, slack, postgres, etc.)
 uv run jarvis --help         # Show all subcommands
 uv run jarvis init --force   # Detect hardware, write ~/.openjarvis/config.toml
 # Eval framework
@@ -87,8 +98,8 @@ j.close()                             # Release resources
 ```
 
 - **Package manager:** `uv` with `hatchling` build backend
-- **Config:** `pyproject.toml` with extras for optional backends (e.g., `openjarvis[inference-vllm]`, `openjarvis[inference-mlx]`, `openjarvis[memory-colbert]`, `openjarvis[server]`, `openjarvis[openclaw]`, `openjarvis[energy-amd]`, `openjarvis[energy-apple]`, `openjarvis[energy-all]`)
-- **CLI entry point:** `jarvis` (Click-based) — subcommands: `init`, `ask`, `serve`, `model`, `memory`, `telemetry`, `bench`, `channel`, `scheduler`, `doctor`
+- **Config:** `pyproject.toml` with extras for optional backends (e.g., `openjarvis[inference-vllm]`, `openjarvis[inference-mlx]`, `openjarvis[memory-colbert]`, `openjarvis[server]`, `openjarvis[openclaw]`, `openjarvis[energy-amd]`, `openjarvis[energy-apple]`, `openjarvis[energy-all]`, `openjarvis[security-signing]`, `openjarvis[sandbox-wasm]`, `openjarvis[dashboard]`, `openjarvis[browser]`, `openjarvis[media]`, `openjarvis[pdf]`, `openjarvis[channel-line]`, `openjarvis[channel-viber]`, `openjarvis[channel-reddit]`, `openjarvis[channel-mastodon]`, `openjarvis[channel-xmpp]`, `openjarvis[channel-rocketchat]`, `openjarvis[channel-zulip]`, `openjarvis[channel-twitch]`, `openjarvis[channel-nostr]`)
+- **CLI entry point:** `jarvis` (Click-based) — subcommands: `init`, `ask`, `serve`, `start`, `stop`, `restart`, `status`, `chat`, `model`, `memory`, `telemetry`, `bench`, `channel`, `scheduler`, `doctor`, `agent`, `workflow`, `skill`, `vault`, `add`
 - **Python:** 3.10+ required
 - **Node.js:** 22+ required only for OpenClaw agent
 
@@ -98,170 +109,121 @@ OpenJarvis is a research framework for on-device AI organized around **five comp
 
 ### Five Pillars
 
-1. **Intelligence** (`src/openjarvis/intelligence/`) — The model definition, catalog, and generation defaults. `ModelRegistry` maps model keys to `ModelSpec`. `IntelligenceConfig` holds model identity (default/fallback model, model_path, checkpoint_path, quantization, preferred_engine, provider) and generation defaults (temperature, max_tokens, top_p, top_k, repetition_penalty, stop_sequences). Model catalog (`model_catalog.py`) maintains `BUILTIN_MODELS` list with auto-discovery via `merge_discovered_models()`. Backward-compat shims in `intelligence/_stubs.py` and `intelligence/router.py` re-export from `learning/` for old import paths.
-2. **Engine** (`src/openjarvis/engine/`) — The inference runtime. Backends: vLLM, SGLang, Ollama, llama.cpp, MLX. All implement `InferenceEngine` ABC with `generate()`, `stream()`, `list_models()`, `health()`. Engines extract and pass through `tool_calls` in OpenAI format.
-3. **Agents** (`src/openjarvis/agents/`) — Pluggable logic for handling queries, making tool/API calls, managing memory. Class hierarchy: `BaseAgent` ABC (with concrete helpers: `_emit_turn_start/end`, `_build_messages`, `_generate`, `_max_turns_result`, `_strip_think_tags`) → `ToolUsingAgent` (adds `tools`, `ToolExecutor`, `max_turns`). Agents: `SimpleAgent` (single-turn, no tools, extends `BaseAgent`), `OrchestratorAgent` (multi-turn tool-calling loop, extends `ToolUsingAgent`), `NativeReActAgent` (Thought-Action-Observation loop, extends `ToolUsingAgent`, registry key `"native_react"`, alias `"react"`), `NativeOpenHandsAgent` (CodeAct-style code execution, extends `ToolUsingAgent`, registry key `"native_openhands"`), `RLMAgent` (recursive LM with code gen, extends `ToolUsingAgent`), `OpenHandsAgent` (wraps real `openhands-sdk`, extends `BaseAgent`, registry key `"openhands"`, requires `openjarvis[openhands]` + Python 3.12+), `OpenClawAgent` (HTTP/subprocess transport), `ClaudeCodeAgent` (wraps Claude Agent SDK via Node.js subprocess, registry key `"claude_code"`, requires Node.js 22+, `accepts_tools=False`), `SandboxedAgent` (transparent Docker wrapper for any agent, registry key `"sandboxed"`, `accepts_tools=False`). `accepts_tools` class attribute enables CLI/SDK to auto-detect tool-using agents. Backward-compat: `from openjarvis.agents.react import ReActAgent` still works (shim). Agents call `engine.generate()` directly — telemetry is handled by the `InstrumentedEngine` wrapper when enabled.
+1. **Intelligence** (`src/openjarvis/intelligence/`) — Model definition, catalog, and generation defaults. `ModelRegistry` maps model keys to `ModelSpec`. `IntelligenceConfig` holds model identity (default/fallback model, model_path, checkpoint_path, quantization, preferred_engine, provider) and generation defaults (temperature, max_tokens, top_p, top_k, repetition_penalty, stop_sequences). Model catalog maintains `BUILTIN_MODELS` with auto-discovery via `merge_discovered_models()`. Backward-compat shims re-export from `learning/` for old import paths.
+2. **Engine** (`src/openjarvis/engine/`) — The inference runtime. Backends: vLLM, SGLang, Ollama, llama.cpp, MLX, LM Studio. All implement `InferenceEngine` ABC with `generate()`, `stream()`, `list_models()`, `health()`. Engines extract and pass through `tool_calls` in OpenAI format.
+3. **Agents** (`src/openjarvis/agents/`) — Pluggable logic for queries, tool/API calls, memory. Hierarchy: `BaseAgent` ABC (helpers: `_emit_turn_start/end`, `_build_messages`, `_generate`, `_max_turns_result`, `_strip_think_tags`, `_check_continuation`) → `ToolUsingAgent` (adds `tools`, `ToolExecutor`, `max_turns`). Agents: `SimpleAgent` (single-turn), `OrchestratorAgent` (multi-turn tool loop), `NativeReActAgent` (Thought-Action-Observation, key `"native_react"`, alias `"react"`), `NativeOpenHandsAgent` (CodeAct, key `"native_openhands"`), `RLMAgent` (recursive LM), `OpenHandsAgent` (real `openhands-sdk`, key `"openhands"`, requires Python 3.12+), `OpenClawAgent` (HTTP/subprocess transport), `ClaudeCodeAgent` (Claude Agent SDK via Node.js, key `"claude_code"`), `SandboxedAgent` (Docker wrapper, key `"sandboxed"`). `accepts_tools` class attribute for CLI/SDK auto-detection. Agents call `engine.generate()` directly — telemetry handled by `InstrumentedEngine` wrapper.
 4. **Tools** (`src/openjarvis/tools/`) — All tools managed via MCP (Model Context Protocol).
-   - **API tools**: `CalculatorTool`, `ThinkTool`, `FileReadTool`, `WebSearchTool`, `CodeInterpreterTool` — all implement `BaseTool` ABC
-   - **Storage tools** (`tools/storage_tools.py`): `MemoryStoreTool`, `MemoryRetrieveTool`, `MemorySearchTool`, `MemoryIndexTool` — wrap `MemoryBackend` operations as MCP-discoverable tools
-   - **LM tool** (`tools/llm_tool.py`): Sub-model calls via engine
-   - **Storage backends** (`tools/storage/`): SQLite/FTS5 (default), FAISS, ColBERTv2, BM25, Hybrid (RRF fusion). All implement `MemoryBackend` ABC with `store()`, `retrieve()`, `delete()`, `clear()`. Canonical import: `from openjarvis.tools.storage.sqlite import SQLiteMemory`. Backward-compat shims in `memory/` still work.
-   - **Scheduler tools** (`scheduler/tools.py`): `ScheduleTaskTool`, `ListScheduledTasksTool`, `PauseScheduledTaskTool`, `ResumeScheduledTaskTool`, `CancelScheduledTaskTool` — MCP-discoverable tools for task scheduling, injected with `_scheduler` dependency
-   - **MCP adapter** (`tools/mcp_adapter.py`): `MCPToolAdapter` wraps external MCP server tools as native `BaseTool` instances. `MCPToolProvider` discovers tools from an MCP server.
-   - **MCP server** (`mcp/server.py`): Exposes all built-in tools via JSON-RPC `tools/list` + `tools/call` (MCP spec 2025-11-25). Any MCP client (Claude, GPT, etc.) can discover and use OpenJarvis tools.
-5. **Learning** (`src/openjarvis/learning/`) — Structured learning system with nested per-pillar sub-policies. `LearningConfig` has nested sections: `routing` (policy selection: heuristic/learned/grpo), `intelligence` (model updates: none/sft), `agent` (agent logic: none/agent_advisor/icl_updater), `metrics` (reward weights: accuracy/latency/cost/efficiency). `RouterPolicy` ABC and `QueryAnalyzer` ABC defined in `learning/_stubs.py`. `HeuristicRouter` and `build_routing_context()` in `learning/router.py`. `LearningPolicy` ABC taxonomy: `IntelligenceLearningPolicy` (updates model routing), `AgentLearningPolicy` (updates agent logic). Implementations: `SFTRouterPolicy` (learns query→model mapping from traces; backward-compat alias `SFTPolicy`), `AgentAdvisorPolicy` (LM-guided agent restructuring), `ICLUpdaterPolicy` (in-context example + skill discovery, registered as `AgentLearningPolicy`). Router policies: `HeuristicRouter` (registered as "heuristic"), `TraceDrivenPolicy` (registered as "learned"), `GRPORouterPolicy` (stub, registered as "grpo"). `HeuristicRewardFunction` scores inference results on latency/cost/efficiency. Orchestrator training subpackage (`learning/orchestrator/`) provides SFT and GRPO pipelines for structured-mode OrchestratorAgent training.
+   - **API tools**: `CalculatorTool`, `ThinkTool`, `FileReadTool`, `FileWriteTool`, `WebSearchTool`, `CodeInterpreterTool`, `LLMTool`, `ShellExecTool`, `ApplyPatchTool`, `HttpRequestTool`, `DatabaseQueryTool`, `PDFExtractTool`, `ImageGenerateTool`, `AudioTranscribeTool` — all implement `BaseTool` ABC
+   - **Git tools** (`git_tool.py`): `GitStatusTool`, `GitDiffTool`, `GitCommitTool`, `GitLogTool`
+   - **Browser tools** (`browser.py`): `BrowserNavigateTool`, `BrowserClickTool`, `BrowserTypeTool`, `BrowserScreenshotTool`, `BrowserExtractTool` (Playwright, optional `[browser]`)
+   - **Agent tools** (`agent_tools.py`): `AgentSpawnTool`, `AgentSendTool`, `AgentListTool`, `AgentKillTool`
+   - **Storage tools** (`storage_tools.py`): `MemoryStoreTool`, `MemoryRetrieveTool`, `MemorySearchTool`, `MemoryIndexTool`
+   - **Storage backends** (`tools/storage/`): SQLite/FTS5 (default), FAISS, ColBERTv2, BM25, Hybrid (RRF fusion), KnowledgeGraph. All implement `MemoryBackend` ABC. Canonical import: `from openjarvis.tools.storage.sqlite import SQLiteMemory`. Backward-compat shims in `memory/` still work.
+   - **Scheduler tools** (`scheduler/tools.py`): 5 MCP tools for task scheduling
+   - **Knowledge graph tools** (`knowledge_tools.py`): `KGAddEntityTool`, `KGAddRelationTool`, `KGQueryTool`, `KGNeighborsTool`
+   - **MCP adapter** (`mcp_adapter.py`): `MCPToolAdapter` wraps external MCP tools as native `BaseTool`; `MCPToolProvider` discovers from server
+   - **MCP server** (`mcp/server.py`): Exposes all built-in tools via JSON-RPC `tools/list` + `tools/call` (MCP spec 2025-11-25)
+   - **MCP templates** (`tools/templates/`): `ToolTemplate` dynamically constructs tools from TOML specs. 10 builtin templates. `discover_templates()` auto-discovers.
+   - **`ToolExecutor`**: dispatch with RBAC check + taint check, `timeout_seconds` on `ToolSpec` (default 30s via `ThreadPoolExecutor`), event bus integration
+   - All registered via `@ToolRegistry.register("name")` decorator
+5. **Learning** (`src/openjarvis/learning/`) — Structured learning with nested per-pillar sub-policies. `LearningConfig` sections: `routing` (heuristic/learned/grpo/bandit), `intelligence` (none/sft), `agent` (none/agent_advisor/icl_updater), `metrics` (accuracy/latency/cost/efficiency weights). Policies: `SFTRouterPolicy` (query→model from traces), `AgentAdvisorPolicy` (LM-guided), `ICLUpdaterPolicy` (in-context with example DB, versioning, rollback, quality gates), `GRPORouterPolicy` (softmax sampling, group relative advantage, per-query-class weights), `BanditRouterPolicy` (Thompson Sampling / UCB1, per-arm stats). `SkillDiscovery` mines tool subsequences from traces to auto-generate skill manifests. Router policies: `HeuristicRouter`, `TraceDrivenPolicy`. Orchestrator training subpackage provides SFT and GRPO pipelines.
 
-### Cross-cutting: Traces
+### Cross-cutting Systems
 
-- **Traces** (`src/openjarvis/traces/`) — Full interaction-level recording. Every agent interaction produces a `Trace` capturing the sequence of `TraceStep`s (route, retrieve, generate, tool_call, respond) with timing, inputs, outputs, and outcomes. `TraceStore` persists to SQLite. `TraceCollector` wraps any `BaseAgent` to record traces automatically. `TraceAnalyzer` provides aggregated stats for the learning system.
+- **Traces** (`src/openjarvis/traces/`) — Full interaction recording. `Trace` captures `TraceStep`s (route, retrieve, generate, tool_call, respond) with timing. `TraceStore` (SQLite), `TraceCollector` (auto-wraps agents), `TraceAnalyzer` (stats for learning).
+- **Telemetry** (`src/openjarvis/telemetry/`) — `InstrumentedEngine` wraps any engine, publishing events to SQLite via `TelemetryStore`. `TelemetryAggregator` for read-only queries. `EnergyMonitor` ABC with vendor-specific implementations: `NvidiaEnergyMonitor` (hw counters/polling), `AmdEnergyMonitor` (amdsmi), `AppleEnergyMonitor` (zeus-ml), `RaplEnergyMonitor` (sysfs). `EnergyBatch` for batch-level energy-per-token. `SteadyStateDetector` for thermal equilibrium (CV-based).
+- **Security** (`src/openjarvis/security/`) — `SecretScanner` + `PIIScanner` (implement `BaseScanner` ABC). `GuardrailsEngine` wraps engines with input/output scanning (WARN/REDACT/BLOCK modes). `AuditLogger` with Merkle hash chain (SHA-256 tamper-evidence). `CapabilityPolicy` RBAC (10 capabilities with glob matching, enforced in `ToolExecutor`). `TaintLabel`/`TaintSet` information flow control with `SINK_POLICY`. Ed25519 signing via `cryptography` (optional `[security-signing]`). `file_policy.py` for sensitive file detection. `InjectionScanner` (11 regex patterns: prompt override, identity override, code/shell injection, exfiltration, jailbreak, delimiter injection). `check_ssrf()` SSRF protection (RFC 1918, loopback, link-local, cloud metadata blocking). `RateLimiter` with `TokenBucket` (thread-safe, per-key). `run_sandboxed()` subprocess isolation (`os.setsid`, process group kill, env clearing). Security HTTP middleware (7 headers: CSP, HSTS, X-Frame-Options, etc.).
 
-### Composition Layer (`src/openjarvis/system.py`)
+### Composition & Infrastructure
 
-- `SystemBuilder`: Config-driven fluent builder — `.engine()`, `.model()`, `.agent()`, `.tools()`, `.telemetry()`, `.traces()`, `.build()` → `JarvisSystem`
-- `JarvisSystem`: Fully wired system with `ask()`, `close()`. Single source of truth for pillar wiring.
-- Consolidates duplicated engine/model/tool/agent resolution logic from CLI, SDK, and server.
-
-### Python SDK (`src/openjarvis/sdk.py`)
-
-- `Jarvis` class: High-level sync API wrapping CLI code paths
-- `MemoryHandle`: Lazy memory backend proxy on `j.memory`
-- `ask()` / `ask_full()`: Direct engine or agent mode, with router policy selection
-- Lazy engine initialization, telemetry recording, resource cleanup via `close()`
-- Also exports `JarvisSystem` and `SystemBuilder` from `system.py` for config-driven composition
-
-### Tool System (`src/openjarvis/tools/`)
-
-- `_stubs.py` — `ToolSpec` dataclass, `BaseTool` ABC (abstract `spec`, `execute()`), `ToolExecutor` (dispatch with event bus integration, JSON argument parsing, latency tracking)
-- Built-in API tools: `CalculatorTool` (ast-based safe eval), `ThinkTool` (reasoning scratchpad), `RetrievalTool` (memory search), `LLMTool` (sub-model calls), `FileReadTool` (safe file reading with path validation), `WebSearchTool`, `CodeInterpreterTool`
-- Storage MCP tools (`storage_tools.py`): `MemoryStoreTool`, `MemoryRetrieveTool`, `MemorySearchTool`, `MemoryIndexTool` — expose memory operations as MCP-discoverable tools
-- MCP adapter (`mcp_adapter.py`): `MCPToolAdapter` wraps external MCP tools as native `BaseTool` instances; `MCPToolProvider` discovers tools from an `MCPClient`
-- Storage backends (`tools/storage/`): `MemoryBackend` ABC, `SQLiteMemory`, `BM25Memory`, `FAISSMemory`, `ColBERTMemory`, `HybridMemory`, plus chunking, context injection, embeddings, ingest. Canonical imports from `openjarvis.tools.storage.*`; backward-compat shims in `openjarvis.memory.*`
-- All registered via `@ToolRegistry.register("name")` decorator
-
-### Benchmarking Framework (`src/openjarvis/bench/`)
-
-- `_stubs.py` — `BenchmarkResult` dataclass (includes `warmup_samples`, `steady_state_samples`, `steady_state_reached`, `total_energy_joules`, `energy_per_token_joules`, `energy_method`), `BaseBenchmark` ABC, `BenchmarkSuite` runner
-- `latency.py` — `LatencyBenchmark`: measures per-call latency (mean, p50, p95, min, max). Supports `warmup_samples` parameter.
-- `throughput.py` — `ThroughputBenchmark`: measures tokens/second throughput. Supports `warmup_samples` parameter.
-- `energy.py` — `EnergyBenchmark`: measures energy per token at thermal equilibrium. Uses `SteadyStateDetector` + `EnergyBatch` with optional `EnergyMonitor`. Warmup phase excluded from metrics.
-- All registered via `BenchmarkRegistry` with `ensure_registered()` pattern
-- CLI: `jarvis bench run` with options for model, engine, samples, benchmark selection, warmup (`-w`), JSON/JSONL output
-
-### OpenClaw Infrastructure (`src/openjarvis/agents/openclaw*.py`)
-
-- `openclaw_protocol.py` — `MessageType` enum, `ProtocolMessage` dataclass, JSON-line `serialize()`/`deserialize()`
-- `openclaw_transport.py` — `OpenClawTransport` ABC, `HttpTransport` (HTTP POST to OpenClaw server), `SubprocessTransport` (Node.js stdin/stdout)
-- `openclaw.py` — `OpenClawAgent`: transport-based agent with tool-call loop, event bus integration
-- `openclaw_plugin.py` — `ProviderPlugin` (wraps engine for OpenClaw), `MemorySearchManager` (wraps memory for OpenClaw)
-
-### API Server (`src/openjarvis/server/`)
-
-- OpenAI-compatible server via `jarvis serve` (FastAPI + uvicorn, optional `[server]` extra)
-- `POST /v1/chat/completions` — non-streaming through agent/engine, streaming via SSE
-- `GET /v1/models` — list available models
-- `GET /health` — health check
-- Pydantic request/response models matching OpenAI API format
-
-### Trace System (`src/openjarvis/traces/`)
-
-- `store.py` — `TraceStore` writes complete `Trace` objects (with `TraceStep` lists) to SQLite. Supports filtering by agent, model, outcome, time range. Subscribes to `TRACE_COMPLETE` events on EventBus.
-- `collector.py` — `TraceCollector` wraps any `BaseAgent` and records a `Trace` for every `run()`. Subscribes to EventBus events (inference, tool, memory) during agent execution, converting them to `TraceStep` objects. Automatically persists traces and publishes `TRACE_COMPLETE`.
-- `analyzer.py` — `TraceAnalyzer` read-only query layer: `summary()`, `per_route_stats()`, `per_tool_stats()`, `traces_for_query_type()`, `export_traces()`. Time-range filtering. Provides inputs for the learning system.
-- Dataclasses: `RouteStats`, `ToolStats`, `TraceSummary`
-
-### Telemetry (`src/openjarvis/telemetry/`)
-
-- `store.py` — `TelemetryStore` writes records to SQLite via EventBus subscription (append-only). Schema includes `energy_method`, `energy_vendor`, `batch_id`, `is_warmup`, `cpu_energy_joules`, `gpu_energy_joules`, `dram_energy_joules` columns.
-- `aggregator.py` — `TelemetryAggregator` read-only query layer: `per_model_stats()`, `per_engine_stats()`, `per_batch_stats()`, `top_models()`, `summary()`, `export_records()`, `clear()`. Time-range filtering via `since`/`until`.
-- `instrumented_engine.py` — `InstrumentedEngine` wraps any `InferenceEngine` transparently, publishing `INFERENCE_START/END` and `TELEMETRY_RECORD` events. Prefers `EnergyMonitor` over legacy `GpuMonitor` when available. Agents call `engine.generate()` normally; telemetry is opt-in via this wrapper (applied by `SystemBuilder` when `config.telemetry.enabled`).
-- `energy_monitor.py` — `EnergyMonitor` ABC: `available()`, `vendor()`, `energy_method()`, `sample()` context manager, `close()`. `EnergySample` dataclass (superset of `GpuSample`): total + per-component (CPU, GPU, DRAM, ANE) energy, vendor/device info, measurement method. `EnergyVendor` enum: NVIDIA, AMD, APPLE, CPU_RAPL. `create_energy_monitor()` factory with auto-detection order: NVIDIA > AMD > Apple > CPU RAPL.
-- `energy_nvidia.py` — `NvidiaEnergyMonitor`: hardware counters via `nvmlDeviceGetTotalEnergyConsumption()` on Volta+, trapezoidal polling fallback on pre-Volta. `energy_method` = "hw_counter" or "polling".
-- `energy_amd.py` — `AmdEnergyMonitor`: hardware counters via `amdsmi_get_energy_count()` (ROCm 6.1+). `energy_method` = "hw_counter".
-- `energy_apple.py` — `AppleEnergyMonitor`: wraps `zeus-ml[apple]` `AppleSiliconMonitor`. Per-component breakdown (CPU, GPU, DRAM, ANE). `energy_method` = "zeus".
-- `energy_rapl.py` — `RaplEnergyMonitor`: reads Intel RAPL counters from `/sys/class/powercap/intel-rapl/` (no deps). Handles counter wrap-around. `energy_method` = "rapl".
-- `batch.py` — `EnergyBatch`: wraps `EnergyMonitor.sample()` around grouped requests. `BatchMetrics` dataclass with energy-per-token/per-request accounting. `BATCH_START`/`BATCH_END` events.
-- `steady_state.py` — `SteadyStateDetector`: CV-based sliding window to detect thermal equilibrium. `SteadyStateConfig` (warmup_samples, window_size, cv_threshold). Used by `EnergyBenchmark`.
-- `wrapper.py` — Legacy `instrumented_generate()` function (still used by some CLI/SDK code paths)
-- Dataclasses: `ModelStats`, `EngineStats`, `AggregatedStats`, `EnergySample`, `BatchMetrics`, `SteadyStateResult`
-
-### Security (`src/openjarvis/security/`)
-
-- `_stubs.py` — `BaseScanner` ABC (abstract `scan()`, `redact()`)
-- `types.py` — `ThreatLevel`, `RedactionMode`, `ScanFinding`, `ScanResult`, `SecurityEvent`, `SecurityEventType`
-- `scanner.py` — `SecretScanner` (API keys, tokens, passwords, connection strings, private keys), `PIIScanner` (email, SSN, credit cards, phone, IP)
-- `guardrails.py` — `GuardrailsEngine` wraps any `InferenceEngine` with input/output scanning. Modes: WARN (pass-through + event), REDACT (replace sensitive content), BLOCK (raise `SecurityBlockError`). `stream()` does post-hoc scan of accumulated output.
-- `file_policy.py` — `is_sensitive_file()` checks filename against `DEFAULT_SENSITIVE_PATTERNS` (`.env`, `*.pem`, `*.key`, `credentials.*`, etc.). `filter_sensitive_paths()` filters path lists.
-- `audit.py` — `AuditLogger` persists security events to SQLite for compliance/forensics.
-
-### Channels (`src/openjarvis/channels/`)
-
-- `_stubs.py` — `BaseChannel` ABC (`connect()`, `disconnect()`, `send()`, `status()`, `list_channels()`, `on_message()`), `ChannelMessage` dataclass, `ChannelStatus` enum, `ChannelHandler` type
-- `openclaw_bridge.py` — `OpenClawChannelBridge`: WebSocket/HTTP bridge to OpenClaw gateway. Background listener thread, reconnect logic, handler registration, event bus integration. Registered as `"openclaw"` in `ChannelRegistry`.
-- `whatsapp_baileys.py` — `WhatsAppBaileysChannel`: Bidirectional WhatsApp messaging via Baileys protocol. Spawns Node.js bridge subprocess, JSON-line stdio protocol, QR code auth, background reader thread. Registered as `"whatsapp_baileys"` in `ChannelRegistry`. Bundled bridge in `whatsapp_baileys_bridge/`.
-
-### Sandbox (`src/openjarvis/sandbox/`)
-
-- `runner.py` — `ContainerRunner`: manages Docker/Podman container lifecycle for sandboxed agent execution. Sentinel-wrapped JSON I/O, timeout enforcement, mount validation, orphan cleanup. `SandboxedAgent(BaseAgent)`: transparent wrapper that runs any agent inside a container (follows `GuardrailsEngine` wrapper pattern).
-- `mount_security.py` — `MountAllowlist`, `AllowedRoot` dataclasses, `DEFAULT_BLOCKED_PATTERNS` (`.ssh`, `.gnupg`, `.env`, `*.pem`, `*.key`, etc.), `validate_mount()`, `validate_mounts()`, path traversal prevention.
-- `Dockerfile.sandbox` — Container image for sandboxed execution (Python 3.12-slim + Node.js 22).
-
-### Scheduler (`src/openjarvis/scheduler/`)
-
-- `scheduler.py` — `ScheduledTask` dataclass, `TaskScheduler` with cron/interval/once scheduling, background polling thread, event bus integration (`SCHEDULER_TASK_START/END`).
-- `store.py` — `SchedulerStore`: SQLite CRUD for `scheduled_tasks` and `task_run_logs` tables.
-- `tools.py` — 5 MCP tools: `ScheduleTaskTool`, `ListScheduledTasksTool`, `PauseScheduledTaskTool`, `ResumeScheduledTaskTool`, `CancelScheduledTaskTool`.
-- CLI: `jarvis scheduler create|list|pause|resume|cancel|logs|start` (Click command group in `cli/scheduler_cmd.py`).
+- **Composition Layer** (`system.py`) — `SystemBuilder` fluent builder → `JarvisSystem` with `ask()`, `close()`. Wires engine, model, agent, tools, telemetry, traces, workflow, sessions, capability policy.
+- **SDK** (`sdk.py`) — `Jarvis` class: high-level sync API with `ask()`/`ask_full()`, `MemoryHandle`, lazy init, telemetry. Also exports `JarvisSystem`/`SystemBuilder`.
+- **Benchmarks** (`bench/`) — `LatencyBenchmark`, `ThroughputBenchmark`, `EnergyBenchmark`. All registered via `BenchmarkRegistry`. CLI: `jarvis bench run`.
+- **OpenClaw** (`agents/openclaw*.py`) — `OpenClawAgent` with `HttpTransport`/`SubprocessTransport`, JSON-line protocol, `ProviderPlugin`, `MemorySearchManager`.
+- **API Server** (`server/`) — OpenAI-compatible via `jarvis serve` (FastAPI + uvicorn). Endpoints: `POST /v1/chat/completions`, `GET /v1/models`, `GET /health`, channel endpoints. SSE streaming.
+- **Channels** (`channels/`) — `BaseChannel` ABC. `OpenClawChannelBridge` (WebSocket/HTTP to OpenClaw gateway). `WhatsAppBaileysChannel` (Baileys protocol, Node.js bridge, QR auth). Phase 21 channels: `LINEChannel`, `ViberChannel`, `MessengerChannel`, `RedditChannel`, `MastodonChannel`, `XMPPChannel`, `RocketChatChannel`, `ZulipChannel`, `TwitchChannel`, `NostrChannel`. All follow `BaseChannel` ABC with env var fallbacks, `@ChannelRegistry.register()`, `EventBus` integration.
+- **Sandbox** (`sandbox/`) — `ContainerRunner` (Docker/Podman lifecycle, mount validation). `WasmRunner` (wasmtime-py, fuel/memory limits, optional `[sandbox-wasm]`). `SandboxedAgent` transparent wrapper. `create_sandbox_runner()` factory. `MountAllowlist` with path traversal prevention.
+- **Scheduler** (`scheduler/`) — `TaskScheduler` with cron/interval/once scheduling, SQLite persistence, 5 MCP tools, event bus. CLI: `jarvis scheduler create|list|pause|resume|cancel|logs|start`.
+- **Agent Hardening** (`agents/loop_guard.py`) — `LoopGuard`: SHA-256 hash tracking (identical calls), ping-pong detection (A-B-A-B patterns), poll-tool budget, context overflow recovery. `BaseAgent._check_continuation()` auto-resumes on `finish_reason=length`.
+- **Workflow Engine** (`workflow/`) — DAG-based `WorkflowGraph` (cycle detection, topological sort, parallel stages via `ThreadPoolExecutor`). `WorkflowBuilder` fluent API. `WorkflowEngine` executes against `JarvisSystem`. TOML loader. Node types: agent, tool, condition, parallel, loop, transform.
+- **Skills** (`skills/`) — `SkillManifest`/`SkillExecutor` (sequential tool steps with template rendering). Ed25519 signature verification. `SkillTool` adapter wraps skills as invocable tools. TOML loader.
+- **Knowledge Graph** (`tools/storage/knowledge_graph.py`) — `KnowledgeGraphMemory(MemoryBackend)`: SQLite entity-relation store. `add_entity()`, `add_relation()`, `neighbors()`, `query_pattern()`. Registered as `"knowledge_graph"`.
+- **Sessions** (`sessions/`) — `SessionStore` (SQLite): cross-channel persistent sessions. `SessionIdentity` canonical user across channels. `consolidate()` summarizes old messages, `decay()` removes expired.
+- **A2A Protocol** (`a2a/`) — Google Agent-to-Agent spec (JSON-RPC 2.0). `A2AServer` (tasks/send, tasks/get, tasks/cancel, `/.well-known/agent.json`). `A2AClient`. `A2AAgentTool` adapter.
+- **TUI Dashboard** (`cli/dashboard.py`) — `textual`-based terminal dashboard (optional `[dashboard]`). Panels: system status, event stream, telemetry, agent activity, sessions.
+- **Desktop App** (`desktop/`) — Tauri 2.0 native desktop application. 5 dashboard panels: EnergyDashboard (real-time power monitoring with recharts), TraceDebugger (timeline inspection with step-type color coding), LearningCurve (policy visualization, GRPO/bandit stats), MemoryBrowser (search + stats), AdminPanel (health, agents, server control). Tauri commands proxy to OpenJarvis REST API. Plugins: notification, shell, global-shortcut, autostart, updater, single-instance. CI: `.github/workflows/desktop.yml` (Linux/macOS/Windows).
+- **Vault** (`cli/vault_cmd.py`) — Fernet-encrypted credential store at `~/.openjarvis/vault.enc` with auto-generated key (`0o600` permissions).
+- **MCP Quick-Add** (`cli/add_cmd.py`) — `jarvis add <server>` with 8 templates (github, filesystem, slack, postgres, brave-search, memory, puppeteer, google-maps). Saves JSON config to `~/.openjarvis/mcp/`.
 
 ### Core Module (`src/openjarvis/core/`)
 
-- `registry.py` — `RegistryBase[T]` generic base class adapted from IPW. Typed subclasses: `ModelRegistry`, `EngineRegistry`, `MemoryRegistry`, `AgentRegistry`, `ToolRegistry`, `RouterPolicyRegistry`, `BenchmarkRegistry`, `ChannelRegistry`, `LearningRegistry`.
+- `registry.py` — `RegistryBase[T]` generic base. Subclasses: `ModelRegistry`, `EngineRegistry`, `MemoryRegistry`, `AgentRegistry`, `ToolRegistry`, `RouterPolicyRegistry`, `BenchmarkRegistry`, `ChannelRegistry`, `LearningRegistry`, `SkillRegistry`.
 - `types.py` — `Message`, `Conversation`, `ModelSpec`, `ToolResult`, `TelemetryRecord`, `StepType`, `TraceStep`, `Trace`, `RoutingContext`.
-- `config.py` — `JarvisConfig` dataclass hierarchy with TOML loader. Config classes: `EngineConfig` (nested `OllamaEngineConfig`, `VLLMEngineConfig`, `SGLangEngineConfig`, `LlamaCppEngineConfig`, `MLXEngineConfig`), `IntelligenceConfig` (model identity + generation defaults: temperature, max_tokens, top_p, top_k, repetition_penalty, stop_sequences), `AgentConfig` (default_agent, tools, objective, system_prompt, system_prompt_path, context_from_memory), `ToolsConfig` (nests `StorageConfig` + `MCPConfig`), `LearningConfig` (nested `RoutingLearningConfig`, `IntelligenceLearningConfig`, `AgentLearningConfig`, `MetricsConfig`), `TracesConfig`, `TelemetryConfig`, `ServerConfig`, `ChannelConfig` (nests `WhatsAppBaileysChannelConfig`), `SecurityConfig`, `SandboxConfig`, `SchedulerConfig`. Backward-compat properties: `engine.ollama_host` → `engine.ollama.host`, `agent.default_tools` → `agent.tools`, `learning.default_policy` → `learning.routing.policy`. TOML migration layer handles cross-section moves (`agent.temperature` → `intelligence.temperature`, `memory.context_injection` → `agent.context_from_memory`). User config lives at `~/.openjarvis/config.toml`. TOML sections: `[engine]`, `[engine.ollama]`, `[engine.vllm]`, `[engine.sglang]`, `[engine.llamacpp]`, `[engine.mlx]`, `[intelligence]`, `[agent]`, `[tools.storage]`, `[tools.mcp]`, `[learning]`, `[learning.routing]`, `[learning.intelligence]`, `[learning.agent]`, `[learning.metrics]`, `[memory]` (backward-compat), `[server]`, `[telemetry]`, `[traces]`, `[channel]`, `[channel.whatsapp_baileys]`, `[security]`, `[sandbox]`, `[scheduler]`.
-- `events.py` — Pub/sub event bus for inter-pillar telemetry (synchronous dispatch). EventType values: INFERENCE_START/END, TOOL_CALL_START/END, MEMORY_STORE/RETRIEVE, AGENT_TURN_START/END, TELEMETRY_RECORD, TRACE_STEP/COMPLETE, CHANNEL_MESSAGE_RECEIVED/SENT, SECURITY_SCAN/ALERT/BLOCK, SCHEDULER_TASK_START/END.
+- `config.py` — `JarvisConfig` dataclass hierarchy with TOML loader. Config classes for each pillar/subsystem. TOML sections: `[engine]` (+ nested `[engine.ollama]`, `[engine.vllm]`, `[engine.sglang]`, `[engine.llamacpp]`, `[engine.mlx]`, `[engine.lmstudio]`), `[intelligence]`, `[agent]`, `[tools.storage]`, `[tools.mcp]`, `[tools.browser]`, `[learning]` (+ nested routing/intelligence/agent/metrics), `[server]`, `[telemetry]`, `[traces]`, `[channel]`, `[security]` (+ `[security.capabilities]`, `ssrf_protection`, `rate_limit_*`), `[sandbox]`, `[scheduler]`, `[workflow]`, `[sessions]`, `[a2a]`. Backward-compat: `engine.ollama_host` → `engine.ollama.host`, `agent.default_tools` → `agent.tools`, TOML migration for cross-section moves.
+- `events.py` — Pub/sub event bus (synchronous dispatch). ~30 EventType values covering inference, tools, memory, agents, telemetry, traces, channels, security, scheduler, workflow, skills, sessions, A2A.
 
 ### Docker & Deployment
 
-- `Dockerfile` — Multi-stage build: Python 3.12-slim, installs `.[server]`, entrypoint `jarvis serve`
-- `Dockerfile.gpu` — NVIDIA CUDA 12.4 runtime variant
-- `Dockerfile.gpu.rocm` — AMD ROCm 6.2 runtime variant (multi-stage build)
-- `docker-compose.yml` — Services: `jarvis` (port 8000) + `ollama` (port 11434)
-- `docker-compose.gpu.rocm.yml` — ROCm override file (use with `-f docker-compose.yml -f docker-compose.gpu.rocm.yml`)
-- `deploy/systemd/openjarvis.service` — systemd unit file
-- `deploy/launchd/com.openjarvis.plist` — macOS launchd plist
+- `Dockerfile` — Multi-stage: Python 3.12-slim, `.[server]`, entrypoint `jarvis serve`
+- `Dockerfile.gpu` — NVIDIA CUDA 12.4 variant
+- `Dockerfile.gpu.rocm` — AMD ROCm 6.2 variant
+- `docker-compose.yml` — `jarvis` (8000) + `ollama` (11434). ROCm override: `docker-compose.gpu.rocm.yml`
+- `deploy/systemd/openjarvis.service`, `deploy/launchd/com.openjarvis.plist`
 
 ### Query Flow
 
-User query &rarr; Security scanning (input) &rarr; Intelligence resolves model (default_model → preferred_engine → fallback chain) &rarr; Agentic Logic (determine tools/memory needs) &rarr; Memory retrieval &rarr; Context injection with source attribution &rarr; Inference Engine generates response &rarr; Security scanning (output) &rarr; Trace recorded to SQLite (full interaction sequence) &rarr; Telemetry recorded &rarr; Learning policies update from accumulated traces.
+User query → Security scanning (input) → Intelligence resolves model → Agentic Logic (tools/memory) → Memory retrieval → Context injection → Engine generates → Security scanning (output) → Trace recorded → Telemetry recorded → Learning policies update.
 
 ### API Surface
 
-OpenAI-compatible server via `jarvis serve`: `POST /v1/chat/completions`, `GET /v1/models`, `GET /v1/channels`, `POST /v1/channels/send`, `GET /v1/channels/status` with SSE streaming.
+OpenAI-compatible server via `jarvis serve`:
+- **Core**: `POST /v1/chat/completions`, `GET /v1/models`, `GET /health`
+- **Channels**: `GET /v1/channels`, `POST /v1/channels/send`, `GET /v1/channels/status`
+- **Agents**: `GET /v1/agents`, `POST /v1/agents`, `DELETE /v1/agents/{id}`, `POST /v1/agents/{id}/message`
+- **Memory**: `POST /v1/memory/store`, `POST /v1/memory/search`, `GET /v1/memory/stats`
+- **Traces**: `GET /v1/traces`, `GET /v1/traces/{id}`
+- **Telemetry**: `GET /v1/telemetry/stats`, `GET /v1/telemetry/energy`
+- **Learning**: `GET /v1/learning/stats`, `GET /v1/learning/policy`
+- **Skills**: `GET /v1/skills`, `POST /v1/skills`, `DELETE /v1/skills/{name}`
+- **Sessions**: `GET /v1/sessions`, `GET /v1/sessions/{id}`
+- **Budget**: `GET /v1/budget`, `PUT /v1/budget/limits`
+- **Metrics**: `GET /metrics` (Prometheus-compatible)
+- **WebSocket**: `WS /v1/chat/stream` (JSON chunked streaming)
+- SSE streaming on `/v1/chat/completions` with `stream=true`
 
 ## Key Design Patterns
 
-- **Registry pattern:** All extensible components use `@XRegistry.register("name")` decorator for registration and runtime discovery. New implementations are added by decorating a class — no factory modifications needed.
+- **Registry pattern:** All extensible components use `@XRegistry.register("name")` decorator for registration and runtime discovery.
 - **ABC interfaces:** Each pillar defines an ABC. Implement the ABC + register via decorator to add a new backend.
 - **Offline-first:** Cloud APIs are optional. All core functionality works without network.
 - **Hardware-aware:** Auto-detect GPU vendor/model/VRAM via `nvidia-smi`, `rocm-smi`, `system_profiler`, `/proc/cpuinfo`. Recommend engine accordingly.
-- **Telemetry opt-in:** When enabled, `InstrumentedEngine` wraps the inference engine to transparently record timing, tokens, energy, cost to SQLite via event bus. Agents call `engine.generate()` without awareness of telemetry. `TelemetryAggregator` provides read-only query/aggregation over stored records.
-- **Backward-compat shims:** `memory/` re-exports from `tools/storage/`, `intelligence/_stubs.py` re-exports `RouterPolicy`/`QueryAnalyzer` from `learning/_stubs.py`, `intelligence/router.py` re-exports `HeuristicRouter`/`build_routing_context`/`DefaultQueryAnalyzer` from `learning/router.py`, `agents/react.py` re-exports `NativeReActAgent` as `ReActAgent` (old import path still works), registry alias `"react"` → `NativeReActAgent`. Old import paths continue to work. Config backward-compat: `engine.ollama_host` → `engine.ollama.host`, `agent.default_tools` → `agent.tools`, `learning.default_policy` → `learning.routing.policy`, etc. TOML migration: `agent.temperature` → `intelligence.temperature`, `memory.context_injection` → `agent.context_from_memory`.
-- **`ensure_registered()` pattern:** Benchmark and learning modules use lazy registration via `ensure_registered()` to survive registry clearing in tests.
+- **Telemetry opt-in:** `InstrumentedEngine` wraps inference transparently. Agents unaware of telemetry.
+- **Backward-compat shims:** `memory/` re-exports from `tools/storage/`, `intelligence/` re-exports from `learning/`, `agents/react.py` re-exports as `ReActAgent`, registry alias `"react"` → `NativeReActAgent`. Old import paths and config keys continue to work.
+- **`ensure_registered()` pattern:** Benchmark and learning modules use lazy registration to survive registry clearing in tests.
 
 ## Development Phases
 
 | Version | Phase | Delivers |
 |---------|-------|----------|
-| v0.1 | Phase 0 | Scaffolding, registries, core types, config, CLI skeleton |
-| v0.2 | Phase 1 | Intelligence + Inference — `jarvis ask` works end-to-end |
-| v0.3 | Phase 2 | Memory backends, document indexing, context injection |
-| v0.4 | Phase 3 | Agents, tool system, OpenAI-compatible API server |
-| v0.5 | Phase 4 | Learning implementations, telemetry aggregation, `--router` CLI, `jarvis telemetry` |
-| v1.0 | Phase 5 | SDK, OpenClaw infrastructure, benchmarks, Docker, documentation |
-| v1.1 | Phase 6 | Trace system, trace-driven learning, pluggable agent architectures |
-| v1.2 | Phase 7 | 5-pillar restructuring: Intelligence ABCs, memory→tools/storage, MCP tool management, composition layer (SystemBuilder/JarvisSystem), InstrumentedEngine, structured learning (SFT/AgentAdvisor/ICL), config schema update |
-| v1.3 | Phase 8 | Intelligence = "The Model": routing moved to Learning, enriched IntelligenceConfig (model_path, checkpoint_path, quantization, preferred_engine, provider), intelligence-driven engine selection, backward-compat shims |
-| v1.4 | Phase 9 | Pillar-aligned config: generation params in Intelligence, nested engine/learning configs, agent objective/system_prompt/context_from_memory, structured learning sub-policies (routing/intelligence/agent/metrics), TOML migration layer |
-| v1.5 | Phase 10 | Agent restructuring: BaseAgent helpers (`_emit_turn_start/end`, `_build_messages`, `_generate`, `_max_turns_result`), ToolUsingAgent intermediate base, `accepts_tools` introspection, NativeReActAgent/NativeOpenHandsAgent renames, real OpenHands SDK integration, CLI/SDK tool-passing bug fix, backward-compat shims |
-| v1.6 | Phase 11 | NanoClaw subsumption: `ClaudeCodeAgent` (Claude Agent SDK via Node.js subprocess), `WhatsAppBaileysChannel` (Baileys protocol), `ContainerRunner`/`SandboxedAgent` (Docker sandbox with mount security), `TaskScheduler` (cron/interval/once + SQLite + MCP tools + CLI), `SandboxConfig`/`SchedulerConfig`/`WhatsAppBaileysChannelConfig`, SystemBuilder `.sandbox()`/`.scheduler()` |
-| v1.7 | Phase 12 | Energy Measurement Upgrade: `EnergyMonitor` ABC with multi-vendor support (NVIDIA hw counters, AMD amdsmi, Apple zeus-ml, CPU RAPL sysfs), `create_energy_monitor()` factory with auto-detection, `EnergySample` superset of `GpuSample`, `EnergyBatch` batch-level energy-per-token accounting, `SteadyStateDetector` CV-based thermal equilibrium detection, `EnergyBenchmark` with warmup phase, `InstrumentedEngine` prefers `EnergyMonitor` over legacy `GpuMonitor`, expanded `GPU_SPECS` (B200, MI300X, MI250X, M4 Max, M2 Ultra), `TelemetryRecord`/store schema extended with energy_method/vendor/batch_id/is_warmup/per-component fields, eval runner warmup phase, `--warmup` CLI option, new extras `energy-amd`/`energy-apple`/`energy-all` |
-| v1.8 | Phase 13 | Install, Hosting, Cross-Hardware, Eval: `jarvis doctor` diagnostic command (8 checks with Rich output + `--json`), `jarvis init` post-setup guidance (engine-specific next steps), README Quick Start section, MLX engine backend (`MLXEngine`, `MLXEngineConfig`, Apple Silicon → `mlx` recommendation), AMD VRAM/multi-GPU detection via `rocm-smi --showmeminfo`/`--showallinfo`, PyTorch MPS device selection in orchestrator trainers, PWA support (vite-plugin-pwa, service worker, manifest, icons), server static file serving fix for PWA files, `Dockerfile.gpu.rocm` + `docker-compose.gpu.rocm.yml` for ROCm, `inference-mlx` extra |
+| v0.1 | 0 | Scaffolding, registries, core types, config, CLI skeleton |
+| v0.2 | 1 | Intelligence + Inference — `jarvis ask` end-to-end |
+| v0.3 | 2 | Memory backends, document indexing, context injection |
+| v0.4 | 3 | Agents, tool system, OpenAI-compatible API server |
+| v0.5 | 4 | Learning, telemetry aggregation, `--router` CLI |
+| v1.0 | 5 | SDK, OpenClaw infra, benchmarks, Docker |
+| v1.1 | 6 | Trace system, trace-driven learning, pluggable agents |
+| v1.2 | 7 | 5-pillar restructuring, composition layer, MCP, structured learning |
+| v1.3 | 8 | Intelligence = "The Model", routing → Learning, engine selection |
+| v1.4 | 9 | Pillar-aligned config, nested configs, TOML migration |
+| v1.5 | 10 | Agent restructuring, BaseAgent/ToolUsingAgent, `accepts_tools`, OpenHands SDK |
+| v1.6 | 11 | NanoClaw subsumption: ClaudeCodeAgent, WhatsApp Baileys, Docker sandbox, TaskScheduler |
+| v1.7 | 12 | EnergyMonitor ABC (NVIDIA/AMD/Apple/RAPL), EnergyBatch, SteadyStateDetector |
+| v1.8 | 13 | `jarvis doctor`/`init`, MLX engine, AMD multi-GPU, PWA, ROCm Docker |
+| v1.9 | 14 | Agent hardening: LoopGuard, RBAC CapabilityPolicy, taint tracking, Merkle audit, Ed25519 |
+| v2.0 | 15 | WorkflowEngine (DAG), SkillSystem, KnowledgeGraphMemory, SessionStore |
+| v2.1 | 16 | A2A protocol, MCP templates, WasmRunner, TUI dashboard |
+| v2.2 | 17 | Production tool parity: FileWrite, ApplyPatch, ShellExec, Git, HTTP, DB, Browser, Agent, Media, PDF tools. SSRF protection, injection scanner, rate limiter, subprocess sandbox, security middleware |
+| v2.3 | 18 | CLI expansion (20 commands): daemon, chat REPL, agent, workflow, skill, vault, add. API expansion (40+ endpoints): agents, memory, traces, telemetry, learning, skills, sessions, budget, metrics, WebSocket streaming |
+| v2.4 | 19 | Learning productionization: GRPO (softmax/advantage), BanditRouter (Thompson/UCB1), SkillDiscovery (trace mining), ICL updates (versioning/rollback/quality gates) |
+| v2.5 | 20 | Tauri 2.0 desktop app: energy dashboard, trace debugger, learning curve visualization, memory browser, admin panel. CI for Linux/macOS/Windows |
+| v2.6 | 21 | 10 new channels: LINE, Viber, Messenger, Reddit, Mastodon, XMPP, Rocket.Chat, Zulip, Twitch, Nostr |

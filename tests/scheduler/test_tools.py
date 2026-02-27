@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from openjarvis.scheduler.scheduler import ScheduledTask
 from openjarvis.scheduler.tools import (
     CancelScheduledTaskTool,
@@ -14,7 +12,6 @@ from openjarvis.scheduler.tools import (
     ResumeScheduledTaskTool,
     ScheduleTaskTool,
 )
-
 
 # -- Spec correctness --------------------------------------------------------
 

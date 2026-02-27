@@ -41,6 +41,23 @@ class EventType(str, Enum):
     SCHEDULER_TASK_END = "scheduler_task_end"
     BATCH_START = "batch_start"
     BATCH_END = "batch_end"
+    # Phase 14 — Agent Hardening & Security
+    TOOL_TIMEOUT = "tool_timeout"
+    LOOP_GUARD_TRIGGERED = "loop_guard_triggered"
+    CAPABILITY_DENIED = "capability_denied"
+    TAINT_VIOLATION = "taint_violation"
+    # Phase 15 — Workflow, Skills, Sessions
+    WORKFLOW_START = "workflow_start"
+    WORKFLOW_NODE_START = "workflow_node_start"
+    WORKFLOW_NODE_END = "workflow_node_end"
+    WORKFLOW_END = "workflow_end"
+    SKILL_EXECUTE_START = "skill_execute_start"
+    SKILL_EXECUTE_END = "skill_execute_end"
+    SESSION_START = "session_start"
+    SESSION_END = "session_end"
+    # Phase 16 — A2A Protocol
+    A2A_TASK_RECEIVED = "a2a_task_received"
+    A2A_TASK_COMPLETED = "a2a_task_completed"
 
 
 @dataclass(slots=True)

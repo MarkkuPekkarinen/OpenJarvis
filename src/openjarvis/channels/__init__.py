@@ -88,6 +88,56 @@ try:
 except ImportError:
     pass
 
+try:
+    import openjarvis.channels.line_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.viber_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.messenger_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.reddit_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.mastodon_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.xmpp_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.rocketchat_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.zulip_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.twitch_channel  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.channels.nostr_channel  # noqa: F401
+except ImportError:
+    pass
+
 __all__ = [
     "BaseChannel",
     "ChannelHandler",

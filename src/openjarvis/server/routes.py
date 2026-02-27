@@ -134,12 +134,19 @@ def _handle_agent(
     input_text = req.messages[-1].content if req.messages else ""
     result = agent.run(input_text, context=ctx)
 
+    usage = UsageInfo(
+        prompt_tokens=result.metadata.get("prompt_tokens", 0),
+        completion_tokens=result.metadata.get("completion_tokens", 0),
+        total_tokens=result.metadata.get("total_tokens", 0),
+    )
+
     return ChatCompletionResponse(
         model=model,
         choices=[Choice(
             message=ChoiceMessage(role="assistant", content=result.content),
             finish_reason="stop",
         )],
+        usage=usage,
     )
 
 

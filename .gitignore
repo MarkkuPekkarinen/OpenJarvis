@@ -51,3 +51,8 @@ site/
 frontend/node_modules/
 frontend/dist/
 src/openjarvis/server/static/
+
+# Desktop (Tauri)
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/

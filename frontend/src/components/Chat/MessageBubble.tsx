@@ -18,12 +18,6 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   return (
     <div className={`message-bubble ${message.role}`}>
-      <div className="message-content">
-        {message.content || (message.role === 'assistant' ? '\u200B' : '')}
-        {message.role === 'assistant' && message.content && (
-          <CopyButton text={message.content} />
-        )}
-      </div>
       {message.toolCalls && message.toolCalls.length > 0 && (
         <div className="tool-calls">
           {message.toolCalls.map((tc) => (
@@ -31,6 +25,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           ))}
         </div>
       )}
+      <div className="message-content">
+        {message.content || (message.role === 'assistant' ? '\u200B' : '')}
+        {message.role === 'assistant' && message.content && (
+          <CopyButton text={message.content} />
+        )}
+      </div>
       <div className="message-meta">
         <span className="message-time">{formatTime(message.timestamp)}</span>
         {usage && (

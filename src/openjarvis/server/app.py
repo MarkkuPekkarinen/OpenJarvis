@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from openjarvis.server.api_routes import include_all_routes
 from openjarvis.server.dashboard import dashboard_router
 from openjarvis.server.routes import router
 
@@ -111,12 +112,25 @@ def create_app(
     app.state.agent = agent
     app.state.bus = bus
     app.state.engine_name = engine_name
-    app.state.agent_name = agent_name or (getattr(agent, "agent_id", None) if agent else None)
+    app.state.agent_name = agent_name or (
+        getattr(agent, "agent_id", None) if agent else None
+    )
     app.state.channel_bridge = channel_bridge
     app.state.session_start = time.time()
 
     app.include_router(router)
     app.include_router(dashboard_router)
+    include_all_routes(app)
+
+    # Add security headers middleware
+    try:
+        from openjarvis.server.middleware import create_security_middleware
+
+        middleware_cls = create_security_middleware()
+        if middleware_cls is not None:
+            app.add_middleware(middleware_cls)
+    except Exception:
+        pass  # middleware is best-effort
 
     # Serve static frontend assets if the static/ directory exists
     static_dir = pathlib.Path(__file__).parent / "static"

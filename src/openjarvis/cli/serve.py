@@ -117,8 +117,7 @@ def serve(
                 agent_kwargs = {"bus": bus}
 
                 # Load tools for agents that support them
-                tools_agents = ("orchestrator", "react", "openhands")
-                if agent_key in tools_agents:
+                if getattr(agent_cls, "accepts_tools", False):
                     import openjarvis.tools  # noqa: F401  # trigger registration
                     from openjarvis.core.registry import ToolRegistry
                     from openjarvis.tools._stubs import BaseTool
@@ -133,7 +132,7 @@ def serve(
                     if tools:
                         agent_kwargs["tools"] = tools
 
-                if agent_key in ("orchestrator", "react", "openhands"):
+                if getattr(agent_cls, "accepts_tools", False):
                     agent_kwargs["max_turns"] = config.agent.max_turns
 
                 agent = agent_cls(engine, model_name, **agent_kwargs)

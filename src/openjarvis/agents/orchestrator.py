@@ -225,8 +225,9 @@ class OrchestratorAgent(ToolUsingAgent):
             content = result.get("content", "")
             raw_tool_calls = result.get("tool_calls", [])
 
-            # No tool calls -> final answer
+            # No tool calls -> check continuation, then final answer
             if not raw_tool_calls:
+                content = self._check_continuation(result, messages)
                 self._emit_turn_end(turns=turns, content_length=len(content))
                 return AgentResult(
                     content=content,
@@ -251,8 +252,28 @@ class OrchestratorAgent(ToolUsingAgent):
                 tool_calls=tool_calls,
             ))
 
-            # Execute each tool and append results
+            # Execute each tool (with loop guard check) and append results
             for tc in tool_calls:
+                # Loop guard check before execution
+                if self._loop_guard:
+                    verdict = self._loop_guard.check_call(
+                        tc.name, tc.arguments,
+                    )
+                    if verdict.blocked:
+                        tool_result = ToolResult(
+                            tool_name=tc.name,
+                            content=f"Loop guard: {verdict.reason}",
+                            success=False,
+                        )
+                        all_tool_results.append(tool_result)
+                        messages.append(Message(
+                            role=Role.TOOL,
+                            content=tool_result.content,
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                        ))
+                        continue
+
                 tool_result = self._executor.execute(tc)
                 all_tool_results.append(tool_result)
 

@@ -20,11 +20,20 @@ export function StreamingIndicator({
 }: StreamingIndicatorProps) {
   return (
     <div className="streaming-indicator">
-      <div className="streaming-bar-container">
-        <div className="streaming-bar" />
+      {toolCalls.length > 0 && (
+        <div className="streaming-tool-calls">
+          {toolCalls.map((tc) => (
+            <ToolCallIndicator key={tc.id} toolCall={tc} />
+          ))}
+        </div>
+      )}
+      <div className="streaming-progress-row">
+        <div className="streaming-bar-container">
+          <div className="streaming-bar" />
+        </div>
+        <span className="streaming-phase">{phase}</span>
+        <span className="streaming-elapsed">{formatElapsed(elapsedMs)}</span>
       </div>
-      <span className="streaming-phase">{phase}</span>
-      <span className="streaming-elapsed">{formatElapsed(elapsedMs)}</span>
     </div>
   );
 }

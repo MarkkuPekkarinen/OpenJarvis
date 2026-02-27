@@ -250,6 +250,13 @@ class MLXEngineConfig:
     host: str = "http://localhost:8080"
 
 
+@dataclass(slots=True)
+class LMStudioEngineConfig:
+    """Per-engine config for LM Studio."""
+
+    host: str = "http://localhost:1234"
+
+
 @dataclass
 class EngineConfig:
     """Inference engine settings with nested per-engine configs."""
@@ -260,6 +267,7 @@ class EngineConfig:
     sglang: SGLangEngineConfig = field(default_factory=SGLangEngineConfig)
     llamacpp: LlamaCppEngineConfig = field(default_factory=LlamaCppEngineConfig)
     mlx: MLXEngineConfig = field(default_factory=MLXEngineConfig)
+    lmstudio: LMStudioEngineConfig = field(default_factory=LMStudioEngineConfig)
 
     # Backward-compat properties for old flat attribute names
     @property
@@ -315,6 +323,15 @@ class EngineConfig:
     @mlx_host.setter
     def mlx_host(self, value: str) -> None:
         self.mlx.host = value
+
+    @property
+    def lmstudio_host(self) -> str:
+        """Deprecated: use ``engine.lmstudio.host``."""
+        return self.lmstudio.host
+
+    @lmstudio_host.setter
+    def lmstudio_host(self, value: str) -> None:
+        self.lmstudio.host = value
 
 
 @dataclass(slots=True)
@@ -474,11 +491,22 @@ class MCPConfig:
 
 
 @dataclass(slots=True)
+class BrowserConfig:
+    """Browser automation settings (Playwright)."""
+
+    headless: bool = True
+    timeout_ms: int = 30000
+    viewport_width: int = 1280
+    viewport_height: int = 720
+
+
+@dataclass(slots=True)
 class ToolsConfig:
     """Tools pillar settings — wraps storage and MCP configuration."""
 
     storage: StorageConfig = field(default_factory=StorageConfig)
     mcp: MCPConfig = field(default_factory=MCPConfig)
+    browser: BrowserConfig = field(default_factory=BrowserConfig)
     enabled: str = ""  # comma-separated default tools
 
 
@@ -689,17 +717,29 @@ class ChannelConfig:
     email: EmailChannelConfig = field(default_factory=EmailChannelConfig)
     whatsapp: WhatsAppChannelConfig = field(default_factory=WhatsAppChannelConfig)
     signal: SignalChannelConfig = field(default_factory=SignalChannelConfig)
-    google_chat: GoogleChatChannelConfig = field(default_factory=GoogleChatChannelConfig)
+    google_chat: GoogleChatChannelConfig = field(
+        default_factory=GoogleChatChannelConfig,
+    )
     irc: IRCChannelConfig = field(default_factory=IRCChannelConfig)
     webchat: WebChatChannelConfig = field(default_factory=WebChatChannelConfig)
     teams: TeamsChannelConfig = field(default_factory=TeamsChannelConfig)
     matrix: MatrixChannelConfig = field(default_factory=MatrixChannelConfig)
     mattermost: MattermostChannelConfig = field(default_factory=MattermostChannelConfig)
     feishu: FeishuChannelConfig = field(default_factory=FeishuChannelConfig)
-    bluebubbles: BlueBubblesChannelConfig = field(default_factory=BlueBubblesChannelConfig)
+    bluebubbles: BlueBubblesChannelConfig = field(
+        default_factory=BlueBubblesChannelConfig,
+    )
     whatsapp_baileys: WhatsAppBaileysChannelConfig = field(
         default_factory=WhatsAppBaileysChannelConfig,
     )
+
+
+@dataclass(slots=True)
+class CapabilitiesConfig:
+    """RBAC capability system settings."""
+
+    enabled: bool = False
+    policy_path: str = ""
 
 
 @dataclass(slots=True)
@@ -714,6 +754,13 @@ class SecurityConfig:
     pii_scanner: bool = True
     audit_log_path: str = str(DEFAULT_CONFIG_DIR / "audit.db")
     enforce_tool_confirmation: bool = True
+    merkle_audit: bool = True
+    signing_key_path: str = ""
+    ssrf_protection: bool = True
+    rate_limit_enabled: bool = False
+    rate_limit_rpm: int = 60
+    rate_limit_burst: int = 10
+    capabilities: CapabilitiesConfig = field(default_factory=CapabilitiesConfig)
 
 
 @dataclass(slots=True)
@@ -727,6 +774,8 @@ class SandboxConfig:
     mount_allowlist_path: str = ""
     max_concurrent: int = 5
     runtime: str = "docker"
+    wasm_fuel_limit: int = 1_000_000
+    wasm_memory_limit_mb: int = 256
 
 
 @dataclass(slots=True)
@@ -736,6 +785,32 @@ class SchedulerConfig:
     enabled: bool = False
     poll_interval: int = 60
     db_path: str = ""  # Defaults to ~/.openjarvis/scheduler.db
+
+
+@dataclass(slots=True)
+class WorkflowConfig:
+    """Workflow engine settings."""
+
+    enabled: bool = False
+    max_parallel: int = 4
+    default_node_timeout: int = 300
+
+
+@dataclass(slots=True)
+class SessionConfig:
+    """Cross-channel session settings."""
+
+    enabled: bool = False
+    max_age_hours: float = 24.0
+    consolidation_threshold: int = 100
+    db_path: str = str(DEFAULT_CONFIG_DIR / "sessions.db")
+
+
+@dataclass(slots=True)
+class A2AConfig:
+    """Agent-to-Agent protocol settings."""
+
+    enabled: bool = False
 
 
 @dataclass
@@ -755,6 +830,9 @@ class JarvisConfig:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    workflow: WorkflowConfig = field(default_factory=WorkflowConfig)
+    sessions: SessionConfig = field(default_factory=SessionConfig)
+    a2a: A2AConfig = field(default_factory=A2AConfig)
 
     @property
     def memory(self) -> StorageConfig:
@@ -848,6 +926,7 @@ def load_config(path: Optional[Path] = None) -> JarvisConfig:
             "engine", "intelligence", "learning", "agent",
             "server", "telemetry", "traces", "security",
             "channel", "tools", "sandbox", "scheduler",
+            "workflow", "sessions", "a2a",
         )
         for section_name in top_sections:
             if section_name in data:
@@ -900,6 +979,9 @@ host = "http://localhost:30000"
 [engine.mlx]
 host = "http://localhost:8080"
 
+# [engine.lmstudio]
+# host = "http://localhost:1234"
+
 [intelligence]
 default_model = ""
 fallback_model = ""
@@ -929,6 +1011,12 @@ default_backend = "sqlite"
 
 [tools.mcp]
 enabled = true
+
+# [tools.browser]
+# headless = true
+# timeout_ms = 30000
+# viewport_width = 1280
+# viewport_height = 720
 
 [server]
 host = "0.0.0.0"
@@ -1025,6 +1113,10 @@ scan_output = true
 secret_scanner = true
 pii_scanner = true
 enforce_tool_confirmation = true
+ssrf_protection = true
+# rate_limit_enabled = false
+# rate_limit_rpm = 60
+# rate_limit_burst = 10
 
 # [sandbox]
 # enabled = false
@@ -1046,9 +1138,12 @@ enforce_tool_confirmation = true
 
 
 __all__ = [
+    "A2AConfig",
     "AgentConfig",
     "AgentLearningConfig",
     "BlueBubblesChannelConfig",
+    "BrowserConfig",
+    "CapabilitiesConfig",
     "ChannelConfig",
     "DEFAULT_CONFIG_DIR",
     "DEFAULT_CONFIG_PATH",
@@ -1064,6 +1159,7 @@ __all__ = [
     "IntelligenceLearningConfig",
     "JarvisConfig",
     "LearningConfig",
+    "LMStudioEngineConfig",
     "LlamaCppEngineConfig",
     "MCPConfig",
     "MLXEngineConfig",
@@ -1078,6 +1174,7 @@ __all__ = [
     "SchedulerConfig",
     "SecurityConfig",
     "ServerConfig",
+    "SessionConfig",
     "SignalChannelConfig",
     "SlackChannelConfig",
     "StorageConfig",
@@ -1091,6 +1188,7 @@ __all__ = [
     "WebhookChannelConfig",
     "WhatsAppBaileysChannelConfig",
     "WhatsAppChannelConfig",
+    "WorkflowConfig",
     "detect_hardware",
     "generate_default_toml",
     "load_config",

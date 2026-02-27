@@ -7,6 +7,7 @@ Each tool is registered via ``@ToolRegistry.register("name")`` and implements
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import time
 from abc import ABC, abstractmethod
@@ -32,6 +33,8 @@ class ToolSpec:
     cost_estimate: float = 0.0
     latency_estimate: float = 0.0
     requires_confirmation: bool = False
+    timeout_seconds: float = 30.0
+    required_capabilities: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -94,11 +97,17 @@ class ToolExecutor:
         *,
         interactive: bool = False,
         confirm_callback: Optional[Callable[[str], bool]] = None,
+        default_timeout: float = 30.0,
+        capability_policy: Optional[Any] = None,
+        agent_id: str = "",
     ) -> None:
         self._tools: Dict[str, BaseTool] = {t.spec.name: t for t in tools}
         self._bus = bus
         self._interactive = interactive
         self._confirm_callback = confirm_callback
+        self._default_timeout = default_timeout
+        self._capability_policy = capability_policy
+        self._agent_id = agent_id
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
         """Parse arguments, dispatch to tool, measure latency, emit events."""
@@ -119,6 +128,59 @@ class ToolExecutor:
                 content=f"Invalid arguments JSON: {exc}",
                 success=False,
             )
+
+        # RBAC capability check
+        if self._capability_policy and tool.spec.required_capabilities:
+            for cap in tool.spec.required_capabilities:
+                if not self._capability_policy.check(
+                    self._agent_id, cap, tool_call.name,
+                ):
+                    if self._bus:
+                        self._bus.publish(
+                            EventType.CAPABILITY_DENIED,
+                            {
+                                "agent_id": self._agent_id,
+                                "capability": cap,
+                                "tool": tool_call.name,
+                            },
+                        )
+                    return ToolResult(
+                        tool_name=tool_call.name,
+                        content=(
+                            f"Capability '{cap}' denied for"
+                            f" agent '{self._agent_id}'"
+                            f" on tool '{tool_call.name}'."
+                        ),
+                        success=False,
+                    )
+
+        # Taint checking (sink policy)
+        taint_set = params.get("_taint") if isinstance(params, dict) else None
+        if taint_set is not None:
+            try:
+                from openjarvis.security.taint import TaintSet, check_taint
+
+                if isinstance(taint_set, TaintSet):
+                    violation = check_taint(tool_call.name, taint_set)
+                    if violation:
+                        if self._bus:
+                            self._bus.publish(
+                                EventType.TAINT_VIOLATION,
+                                {
+                                    "tool": tool_call.name,
+                                    "violation": violation,
+                                },
+                            )
+                        return ToolResult(
+                            tool_name=tool_call.name,
+                            content=f"Taint violation: {violation}",
+                            success=False,
+                        )
+            except ImportError:
+                pass
+            # Remove internal taint key before passing to tool
+            if isinstance(params, dict):
+                params.pop("_taint", None)
 
         # Confirmation check for sensitive tools
         if tool.spec.requires_confirmation:
@@ -150,10 +212,27 @@ class ToolExecutor:
                 {"tool": tool_call.name, "arguments": params},
             )
 
-        # Execute with timing
+        # Execute with timeout
+        timeout = tool.spec.timeout_seconds or self._default_timeout
         t0 = time.time()
         try:
-            result = tool.execute(**params)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(tool.execute, **params)
+                result = future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            if self._bus:
+                self._bus.publish(
+                    EventType.TOOL_TIMEOUT,
+                    {"tool": tool_call.name, "timeout": timeout},
+                )
+            result = ToolResult(
+                tool_name=tool_call.name,
+                content=(
+                    f"Tool '{tool_call.name}' timed out"
+                    f" after {timeout:.0f}s."
+                ),
+                success=False,
+            )
         except Exception as exc:
             result = ToolResult(
                 tool_name=tool_call.name,
@@ -162,6 +241,17 @@ class ToolExecutor:
             )
         latency = time.time() - t0
         result.latency_seconds = latency
+
+        # Auto-detect taints in results
+        if result.success:
+            try:
+                from openjarvis.security.taint import auto_detect_taint
+
+                detected = auto_detect_taint(result.content)
+                if detected and detected.labels:
+                    result.metadata["_taint"] = detected
+            except ImportError:
+                pass
 
         # Emit end event
         if self._bus:

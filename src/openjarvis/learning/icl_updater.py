@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from openjarvis.core.registry import LearningRegistry
 from openjarvis.learning._stubs import AgentLearningPolicy
@@ -24,12 +24,17 @@ class ICLUpdaterPolicy(AgentLearningPolicy):
         min_score: float = 0.7,
         max_examples: int = 20,
         min_skill_occurrences: int = 3,
+        auto_apply: bool = False,
     ) -> None:
         self._min_score = min_score
         self._max_examples = max_examples
         self._min_skill_occurrences = min_skill_occurrences
+        self._auto_apply = auto_apply
         self._examples: List[Dict[str, Any]] = []
         self._skills: List[Dict[str, Any]] = []
+        # Versioned example database for add_example / rollback
+        self._example_db: List[Dict[str, Any]] = []
+        self._version: int = 0
 
     def update(self, trace_store: Any, **kwargs: object) -> Dict[str, Any]:
         """Analyze traces and extract ICL examples + skills."""
@@ -115,6 +120,105 @@ class ICLUpdaterPolicy(AgentLearningPolicy):
         # Sort by frequency
         skills.sort(key=lambda x: x["occurrences"], reverse=True)
         return skills
+
+    # -- Versioned example database methods ------------------------------------
+
+    def add_example(
+        self,
+        query: str,
+        response: str,
+        outcome: float,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Add an ICL example if it meets the quality threshold.
+
+        Parameters
+        ----------
+        query:
+            The user query that produced this example.
+        response:
+            The agent/model response.
+        outcome:
+            Quality score in [0, 1].
+        metadata:
+            Optional metadata dict attached to the example.
+
+        Returns
+        -------
+        True if the example was accepted, False if rejected (below threshold).
+        """
+        if outcome < self._min_score:
+            return False
+
+        self._version += 1
+        entry: Dict[str, Any] = {
+            "query": query,
+            "response": response,
+            "outcome": outcome,
+            "metadata": metadata or {},
+            "version": self._version,
+        }
+        self._example_db.append(entry)
+
+        # Trim to max_examples (remove oldest first)
+        if len(self._example_db) > self._max_examples:
+            self._example_db = self._example_db[-self._max_examples:]
+
+        return True
+
+    def rollback(self, version: int) -> None:
+        """Remove all examples added after the given version.
+
+        Parameters
+        ----------
+        version:
+            The version checkpoint to rollback to.  All examples with
+            ``version > checkpoint`` are removed.
+        """
+        self._example_db = [
+            ex for ex in self._example_db if ex["version"] <= version
+        ]
+        self._version = version
+
+    def get_examples(
+        self,
+        query_class: str = "",
+        top_k: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve the best examples, optionally filtered by query class.
+
+        Parameters
+        ----------
+        query_class:
+            If non-empty, only return examples whose query contains this
+            substring (case-insensitive).
+        top_k:
+            Maximum number of examples to return.
+
+        Returns
+        -------
+        Up to *top_k* examples sorted by outcome (descending).
+        """
+        pool = self._example_db
+        if query_class:
+            lc = query_class.lower()
+            pool = [ex for ex in pool if lc in ex["query"].lower()]
+
+        # Sort by outcome descending, take top_k
+        ranked = sorted(pool, key=lambda ex: ex["outcome"], reverse=True)
+        return ranked[:top_k]
+
+    @property
+    def version(self) -> int:
+        """Current version counter."""
+        return self._version
+
+    @property
+    def example_db(self) -> List[Dict[str, Any]]:
+        """Return a copy of the versioned example database."""
+        return list(self._example_db)
+
+    # -- Original property accessors ------------------------------------------
 
     @property
     def examples(self) -> List[Dict[str, Any]]:

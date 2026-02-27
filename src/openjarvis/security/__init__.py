@@ -1,4 +1,4 @@
-"""Security guardrails — scanners, engine wrapper, and audit logging."""
+"""Security guardrails — scanners, engine wrapper, audit, SSRF."""
 
 from openjarvis.security._stubs import BaseScanner
 from openjarvis.security.audit import AuditLogger
@@ -9,6 +9,7 @@ from openjarvis.security.file_policy import (
 )
 from openjarvis.security.guardrails import GuardrailsEngine, SecurityBlockError
 from openjarvis.security.scanner import PIIScanner, SecretScanner
+from openjarvis.security.ssrf import check_ssrf, is_private_ip
 from openjarvis.security.types import (
     RedactionMode,
     ScanFinding,
@@ -32,6 +33,8 @@ __all__ = [
     "SecurityEvent",
     "SecurityEventType",
     "ThreatLevel",
+    "check_ssrf",
     "filter_sensitive_paths",
+    "is_private_ip",
     "is_sensitive_file",
 ]
