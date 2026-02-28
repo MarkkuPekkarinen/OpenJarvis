@@ -1,6 +1,6 @@
 import type { ModelInfo, SavingsData, ServerInfo } from '../types';
 
-const BASE = '';  // relative to same origin
+const BASE = import.meta.env.VITE_API_URL || '';  // relative to same origin by default
 
 export async function fetchModels(): Promise<ModelInfo[]> {
   const res = await fetch(`${BASE}/v1/models`);
