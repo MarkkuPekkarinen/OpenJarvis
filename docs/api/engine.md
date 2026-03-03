@@ -38,23 +38,21 @@ configuration and health checks.
       show_source: true
       members_order: source
 
-### VLLMEngine
+### OpenAI-Compatible Engines (vLLM, SGLang, llama.cpp, MLX, LM Studio)
 
-::: openjarvis.engine.vllm.VLLMEngine
-    options:
-      show_source: true
-      members_order: source
+These engines are thin subclasses of `_OpenAICompatibleEngine`, created
+via data-driven registration in `openai_compat_engines.py`. They share
+the same implementation and differ only in `engine_id` and default host.
 
-### LlamaCppEngine
+| Engine | Registry Key | Default Host |
+|--------|-------------|--------------|
+| `VLLMEngine` | `vllm` | `http://localhost:8000` |
+| `SGLangEngine` | `sglang` | `http://localhost:30000` |
+| `LlamaCppEngine` | `llamacpp` | `http://localhost:8080` |
+| `MLXEngine` | `mlx` | `http://localhost:8080` |
+| `LMStudioEngine` | `lmstudio` | `http://localhost:1234` |
 
-::: openjarvis.engine.llamacpp.LlamaCppEngine
-    options:
-      show_source: true
-      members_order: source
-
-### SGLangEngine
-
-::: openjarvis.engine.sglang.SGLangEngine
+::: openjarvis.engine._openai_compat._OpenAICompatibleEngine
     options:
       show_source: true
       members_order: source

@@ -193,9 +193,7 @@ src/openjarvis/
         _discovery.py           # discover_engines, discover_models, get_engine
         _openai_compat.py       # OpenAI-compatible wrapper
         ollama.py               # OllamaEngine
-        vllm.py                 # VllmEngine
-        llamacpp.py             # LlamaCppEngine
-        sglang.py               # SGLangEngine
+        openai_compat_engines.py   # Data-driven registration (vLLM, SGLang, llama.cpp, MLX, LM Studio)
         cloud.py                # CloudEngine (OpenAI/Anthropic/Google)
 
     agents/                     # Agent implementations

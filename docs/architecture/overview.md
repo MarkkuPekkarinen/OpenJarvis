@@ -148,9 +148,7 @@ src/openjarvis/
         _openai_compat.py   Shared base for OpenAI-compatible engines
         _discovery.py       discover_engines(), discover_models(), get_engine()
         ollama.py           Ollama backend (native HTTP API)
-        vllm.py             vLLM backend (OpenAI-compatible)
-        sglang.py           SGLang backend (OpenAI-compatible)
-        llamacpp.py         llama.cpp backend (OpenAI-compatible)
+        openai_compat_engines.py  Data-driven registration (vLLM, SGLang, llama.cpp, MLX, LM Studio)
         cloud.py            Cloud backend (OpenAI, Anthropic, Google SDKs)
 
     agents/             Agentic Logic pillar -- pluggable agents
