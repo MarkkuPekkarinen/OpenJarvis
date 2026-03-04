@@ -17,6 +17,7 @@ export function InputArea() {
   const selectedModel = useAppStore((s) => s.selectedModel);
   const streamState = useAppStore((s) => s.streamState);
   const messages = useAppStore((s) => s.messages);
+  const speechEnabled = useAppStore((s) => s.settings.speechEnabled);
   const createConversation = useAppStore((s) => s.createConversation);
   const addMessage = useAppStore((s) => s.addMessage);
   const updateLastAssistant = useAppStore((s) => s.updateLastAssistant);
@@ -24,6 +25,13 @@ export function InputArea() {
   const resetStream = useAppStore((s) => s.resetStream);
 
   const { state: speechState, available: speechAvailable, startRecording, stopRecording } = useSpeech();
+
+  const micDisabled = !speechEnabled || !speechAvailable || streamState.isStreaming;
+  const micReason: 'not-enabled' | 'no-backend' | 'streaming' | undefined =
+    !speechEnabled ? 'not-enabled'
+    : !speechAvailable ? 'no-backend'
+    : streamState.isStreaming ? 'streaming'
+    : undefined;
 
   const handleMicClick = useCallback(async () => {
     if (speechState === 'recording') {
@@ -257,13 +265,12 @@ export function InputArea() {
           </button>
         ) : (
           <div className="flex items-center gap-1">
-            {speechAvailable && (
-              <MicButton
-                state={speechState}
-                onClick={handleMicClick}
-                disabled={streamState.isStreaming}
-              />
-            )}
+            <MicButton
+              state={speechState}
+              onClick={handleMicClick}
+              disabled={micDisabled}
+              reason={micReason}
+            />
             <button
               onClick={sendMessage}
               disabled={!input.trim()}

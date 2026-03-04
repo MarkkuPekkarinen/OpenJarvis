@@ -13,9 +13,10 @@ import {
   Download,
   Upload,
   Trash2,
+  Mic,
 } from 'lucide-react';
 import { useAppStore, type ThemeMode } from '../lib/store';
-import { checkHealth } from '../lib/api';
+import { checkHealth, fetchSpeechHealth } from '../lib/api';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -57,10 +58,14 @@ export function SettingsPage() {
   const conversations = useAppStore((s) => s.conversations);
   const serverInfo = useAppStore((s) => s.serverInfo);
   const [healthy, setHealthy] = useState<boolean | null>(null);
+  const [speechBackendAvailable, setSpeechBackendAvailable] = useState<boolean | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     checkHealth().then(setHealthy);
+    fetchSpeechHealth()
+      .then((h) => setSpeechBackendAvailable(h.available))
+      .catch(() => setSpeechBackendAvailable(false));
   }, []);
 
   const showSaved = () => {
@@ -223,6 +228,50 @@ export function SettingsPage() {
                 className="w-32 cursor-pointer accent-[var(--color-accent)]"
               />
             </SettingRow>
+          </Section>
+
+          {/* Speech */}
+          <Section title="Speech">
+            <SettingRow label="Speech-to-Text" description="Enable microphone input for voice dictation">
+              <button
+                onClick={() => { updateSettings({ speechEnabled: !settings.speechEnabled }); showSaved(); }}
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer"
+                style={{
+                  background: settings.speechEnabled ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
+                }}
+              >
+                <span
+                  className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform bg-white"
+                  style={{
+                    transform: settings.speechEnabled ? 'translateX(20px)' : 'translateX(0)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }}
+                />
+              </button>
+            </SettingRow>
+            <SettingRow label="Backend status" description="Requires Whisper, Deepgram, or another speech backend">
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{
+                    background: speechBackendAvailable === true ? 'var(--color-success)'
+                      : speechBackendAvailable === false ? 'var(--color-text-tertiary)'
+                      : 'var(--color-text-tertiary)',
+                  }}
+                />
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {speechBackendAvailable === null ? 'Checking...'
+                    : speechBackendAvailable ? 'Available'
+                    : 'Not configured'}
+                </span>
+              </div>
+            </SettingRow>
+            {!speechBackendAvailable && speechBackendAvailable !== null && (
+              <div className="text-xs mt-2 px-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                Set up a speech backend to use voice input.
+                See the <a href="https://hazyresearch.stanford.edu/OpenJarvis/user-guide/tools/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)' }}>documentation</a> for details.
+              </div>
+            )}
           </Section>
 
           {/* Data */}

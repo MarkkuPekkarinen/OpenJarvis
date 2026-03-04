@@ -51,6 +51,7 @@ interface Settings {
   defaultAgent: string;
   temperature: number;
   maxTokens: number;
+  speechEnabled: boolean;
 }
 
 function loadSettings(): Settings {
@@ -62,6 +63,7 @@ function loadSettings(): Settings {
     defaultAgent: '',
     temperature: 0.7,
     maxTokens: 4096,
+    speechEnabled: false,
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);

@@ -5,9 +5,7 @@ hide:
   - navigation
 ---
 
-# OpenJarvis
-
-**Programming abstractions for on-device AI.**
+# _Programming abstractions_ for on-device AI
 
 OpenJarvis is a modular framework for building, running, and learning from local AI systems. It provides composable abstractions across **five pillars** with a cross-cutting trace-driven learning system:
 
@@ -29,55 +27,55 @@ Everything runs on your hardware. Cloud APIs are optional.
 
     ---
 
-    Intelligence (the model), Agents (agentic harness), Tools (MCP-based tool system with storage), Engine (inference runtime), and Learning (trace-driven improvement) — each with a clear ABC interface and decorator-based registry.
+    Intelligence, Agents, Tools, Engine, and Learning — each with a clear ABC interface and decorator-based registry.
 
 -   **5 Engine Backends**
 
     ---
 
-    Ollama, vLLM, SGLang, llama.cpp, and cloud (OpenAI/Anthropic/Google). All implement the same `InferenceEngine` ABC with `generate()`, `stream()`, `list_models()`, and `health()`.
+    Ollama, vLLM, SGLang, llama.cpp, and cloud (OpenAI/Anthropic/Google). Same `InferenceEngine` ABC.
 
 -   **5 Memory Backends**
 
     ---
 
-    SQLite/FTS5 (default, zero-dependency), FAISS, ColBERTv2, BM25, and Hybrid (reciprocal rank fusion). Document chunking, indexing, and context injection built in.
+    SQLite/FTS5, FAISS, ColBERTv2, BM25, and Hybrid (reciprocal rank fusion). Zero-dependency default.
 
 -   **Hardware-Aware**
 
     ---
 
-    Auto-detects GPU vendor, model, and VRAM via `nvidia-smi`, `rocm-smi`, and `system_profiler`. Recommends the optimal engine for your hardware automatically.
+    Auto-detects GPU vendor, model, and VRAM. Recommends the optimal engine for your hardware.
 
 -   **Offline-First**
 
     ---
 
-    All core functionality works without a network connection. Cloud API backends are optional extras for when you need them.
+    All core functionality works without a network connection. Cloud APIs are optional extras.
 
 -   **OpenAI-Compatible API**
 
     ---
 
-    `jarvis serve` starts a FastAPI server with `POST /v1/chat/completions`, `GET /v1/models`, and SSE streaming. Drop-in replacement for OpenAI-compatible clients.
+    `jarvis serve` starts a FastAPI server with SSE streaming. Drop-in replacement for OpenAI clients.
 
 -   **Trace-Driven Learning**
 
     ---
 
-    Every agent interaction is recorded as a trace. The learning system improves Intelligence (SFT weight updates) and Agents (system prompt, tool selection, retry logic). Pluggable policies: heuristic, trace-driven, SFT, agent advisor, ICL updater, GRPO.
+    Every interaction is traced. The learning system improves models (SFT) and agents (prompt, tools, logic).
 
 -   **Python SDK**
 
     ---
 
-    The `Jarvis` class provides a high-level sync API. Three lines of code to ask a question. Full access to agents, tools, memory, and model routing.
+    The `Jarvis` class: three lines of code to ask a question. Full access to agents, tools, memory, and routing.
 
 -   **CLI-First**
 
     ---
 
-    `jarvis ask`, `jarvis serve`, `jarvis memory`, `jarvis bench`, `jarvis telemetry` — every capability is accessible from the command line with rich terminal output.
+    `jarvis ask`, `jarvis serve`, `jarvis memory`, `jarvis bench` — every capability from the command line.
 
 </div>
 
@@ -85,86 +83,70 @@ Everything runs on your hardware. Cloud APIs are optional.
 
 ## Quick Start
 
-<div class="quick-start-section" markdown>
+=== "Browser App"
 
-### Browser App
+    Run the full chat UI locally with one script:
 
-Run the full chat UI locally with one script:
+    ```bash
+    git clone https://github.com/HazyResearch/OpenJarvis.git
+    cd OpenJarvis
+    ./scripts/quickstart.sh
+    ```
 
-```bash
-git clone https://github.com/HazyResearch/OpenJarvis.git
-cd OpenJarvis
-./scripts/quickstart.sh
-```
+    This installs dependencies, starts Ollama + a local model, launches the backend
+    and frontend, and opens `http://localhost:5173` in your browser.
 
-This installs dependencies, starts Ollama + a local model, launches the backend
-and frontend, and opens `http://localhost:5173` in your browser.
+=== "Desktop App"
 
-</div>
+    Download the native desktop app — it bundles Ollama and the Python backend
+    so everything works out of the box.
 
-<div class="quick-start-section" markdown>
+    [Download for macOS (Apple Silicon)](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_aarch64.dmg){ .md-button .md-button--primary }
 
-### Desktop App
+    Also available for [macOS (Intel)](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_x64.dmg), [Windows](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_x64-setup.exe), [Linux (DEB)](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_amd64.deb), and [Linux (RPM)](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_amd64.rpm). See the [Downloads](downloads.md) page for details.
 
-Download the native desktop app — it bundles Ollama and the Python backend
-so everything works out of the box.
+=== "Python SDK"
 
-[Download for macOS (Apple Silicon)](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_aarch64.dmg){ .md-button .md-button--primary }
+    ```python
+    from openjarvis import Jarvis
 
-Also available for [macOS (Intel)](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_x64.dmg), [Windows](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_x64-setup.exe), [Linux (DEB)](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_amd64.deb), and [Linux (RPM)](https://github.com/HazyResearch/OpenJarvis/releases/latest/download/OpenJarvis_amd64.rpm). See the [Downloads](downloads.md) page for details.
+    j = Jarvis()
+    response = j.ask("Explain quicksort in two sentences.")
+    print(response)
+    j.close()
+    ```
 
-</div>
+    For more control, use `ask_full()` to get usage stats, model info, and tool results:
 
-<div class="quick-start-section" markdown>
+    ```python
+    result = j.ask_full(
+        "What is 2 + 2?",
+        agent="orchestrator",
+        tools=["calculator"],
+    )
+    print(result["content"])       # "4"
+    print(result["tool_results"])  # [{tool_name: "calculator", ...}]
+    ```
 
-### Python SDK
+=== "CLI"
 
-```python
-from openjarvis import Jarvis
+    ```bash
+    # Ask a question
+    jarvis ask "What is the capital of France?"
 
-j = Jarvis()
-response = j.ask("Explain quicksort in two sentences.")
-print(response)
-j.close()
-```
+    # Use an agent with tools
+    jarvis ask --agent orchestrator --tools calculator,think "What is 137 * 42?"
 
-For more control, use `ask_full()` to get usage stats, model info, and tool results:
+    # Start the API server
+    jarvis serve --port 8000
 
-```python
-result = j.ask_full(
-    "What is 2 + 2?",
-    agent="orchestrator",
-    tools=["calculator"],
-)
-print(result["content"])       # "4"
-print(result["tool_results"])  # [{tool_name: "calculator", ...}]
-```
+    # Index documents and search memory
+    jarvis memory index ./docs/
+    jarvis memory search "configuration options"
 
-</div>
-
-<div class="quick-start-section" markdown>
-
-### CLI
-
-```bash
-# Ask a question
-jarvis ask "What is the capital of France?"
-
-# Use an agent with tools
-jarvis ask --agent orchestrator --tools calculator,think "What is 137 * 42?"
-
-# Start the API server
-jarvis serve --port 8000
-
-# Index documents and search memory
-jarvis memory index ./docs/
-jarvis memory search "configuration options"
-
-# Run inference benchmarks
-jarvis bench run --json
-```
-
-</div>
+    # Run inference benchmarks
+    jarvis bench run --json
+    ```
 
 ---
 
