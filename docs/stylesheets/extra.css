@@ -76,6 +76,10 @@
   color: var(--md-accent-fg-color);
 }
 
+.md-typeset h1 .headerlink {
+  display: none;
+}
+
 .hero-tagline {
   font-size: 1.05rem;
   color: var(--md-default-fg-color--light);
