@@ -3,8 +3,11 @@
 //! Avoids `dyn InferenceEngine` for the hot path. Each variant holds a
 //! concrete engine so the compiler can inline and devirtualize.
 
+use crate::llamacpp::LlamaCppEngine;
 use crate::ollama::OllamaEngine;
 use crate::openai_compat::OpenAICompatEngine;
+use crate::sglang::SGLangEngine;
+use crate::vllm::VLLMEngine;
 use crate::traits::{InferenceEngine, TokenStream};
 use openjarvis_core::error::OpenJarvisError;
 use openjarvis_core::{GenerateResult, Message};
@@ -15,8 +18,17 @@ use serde_json::Value;
 /// Static dispatch at compile-time — no vtable overhead on the hot path.
 pub enum Engine {
     Ollama(OllamaEngine),
+    /// Dedicated vLLM engine with OpenAI-compatible API.
+    VLLM(VLLMEngine),
+    /// Dedicated SGLang engine with OpenAI-compatible API.
+    SGLang(SGLangEngine),
+    /// Dedicated llama.cpp engine with native `/completion` API.
+    LlamaCppNative(LlamaCppEngine),
+    /// Legacy: vLLM via generic OpenAI-compatible engine.
     Vllm(OpenAICompatEngine),
+    /// Legacy: SGLang via generic OpenAI-compatible engine.
     Sglang(OpenAICompatEngine),
+    /// Legacy: llama.cpp via generic OpenAI-compatible engine.
     LlamaCpp(OpenAICompatEngine),
     Mlx(OpenAICompatEngine),
     LmStudio(OpenAICompatEngine),
@@ -30,6 +42,9 @@ macro_rules! delegate_engine {
     ($self:expr, $method:ident $(, $arg:expr)*) => {
         match $self {
             Engine::Ollama(e) => e.$method($($arg),*),
+            Engine::VLLM(e) => e.$method($($arg),*),
+            Engine::SGLang(e) => e.$method($($arg),*),
+            Engine::LlamaCppNative(e) => e.$method($($arg),*),
             Engine::Vllm(e) => e.$method($($arg),*),
             Engine::Sglang(e) => e.$method($($arg),*),
             Engine::LlamaCpp(e) => e.$method($($arg),*),
@@ -70,6 +85,9 @@ impl InferenceEngine for Engine {
     ) -> Result<TokenStream, OpenJarvisError> {
         match self {
             Engine::Ollama(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
+            Engine::VLLM(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
+            Engine::SGLang(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
+            Engine::LlamaCppNative(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
             Engine::Vllm(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
             Engine::Sglang(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
             Engine::LlamaCpp(e) => e.stream(messages, model, temperature, max_tokens, extra).await,
@@ -104,6 +122,9 @@ impl Engine {
     pub fn variant_key(&self) -> &str {
         match self {
             Engine::Ollama(_) => "ollama",
+            Engine::VLLM(_) => "vllm",
+            Engine::SGLang(_) => "sglang",
+            Engine::LlamaCppNative(_) => "llamacpp",
             Engine::Vllm(_) => "vllm",
             Engine::Sglang(_) => "sglang",
             Engine::LlamaCpp(_) => "llamacpp",
@@ -161,5 +182,26 @@ mod tests {
         let e = Engine::AppleFm(OpenAICompatEngine::apple_fm("http://localhost:8079"));
         assert_eq!(e.variant_key(), "apple_fm");
         assert_eq!(e.engine_id(), "apple_fm");
+    }
+
+    #[test]
+    fn test_engine_vllm_native_variant() {
+        let e = Engine::VLLM(VLLMEngine::with_defaults());
+        assert_eq!(e.variant_key(), "vllm");
+        assert_eq!(e.engine_id(), "vllm");
+    }
+
+    #[test]
+    fn test_engine_sglang_native_variant() {
+        let e = Engine::SGLang(SGLangEngine::with_defaults());
+        assert_eq!(e.variant_key(), "sglang");
+        assert_eq!(e.engine_id(), "sglang");
+    }
+
+    #[test]
+    fn test_engine_llamacpp_native_variant() {
+        let e = Engine::LlamaCppNative(LlamaCppEngine::with_defaults());
+        assert_eq!(e.variant_key(), "llamacpp");
+        assert_eq!(e.engine_id(), "llamacpp");
     }
 }

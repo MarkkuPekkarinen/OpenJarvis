@@ -56,7 +56,7 @@ def optimize_run(
     data = None
     if config_path is not None:
         try:
-            from openjarvis.optimize.config import load_optimize_config
+            from openjarvis.learning.optimize.config import load_optimize_config
         except ImportError:
             console.print(
                 "[red]Optimization framework not available.[/red]"
@@ -80,7 +80,7 @@ def optimize_run(
     benchmark_specs = None
     if data is not None:
         try:
-            from openjarvis.optimize.config import load_benchmark_specs
+            from openjarvis.learning.optimize.config import load_benchmark_specs
 
             specs = load_benchmark_specs(data)
             if len(specs) > 1:
@@ -110,15 +110,15 @@ def optimize_run(
 
     try:
         from openjarvis.core.config import DEFAULT_CONFIG_DIR
-        from openjarvis.optimize.config import load_objectives
-        from openjarvis.optimize.llm_optimizer import LLMOptimizer
-        from openjarvis.optimize.optimizer import OptimizationEngine
-        from openjarvis.optimize.search_space import (
+        from openjarvis.learning.optimize.config import load_objectives
+        from openjarvis.learning.optimize.llm_optimizer import LLMOptimizer
+        from openjarvis.learning.optimize.optimizer import OptimizationEngine
+        from openjarvis.learning.optimize.search_space import (
             DEFAULT_SEARCH_SPACE,
             build_search_space,
         )
-        from openjarvis.optimize.store import OptimizationStore
-        from openjarvis.optimize.trial_runner import (
+        from openjarvis.learning.optimize.store import OptimizationStore
+        from openjarvis.learning.optimize.trial_runner import (
             MultiBenchTrialRunner,
             TrialRunner,
         )
@@ -216,7 +216,7 @@ def optimize_status() -> None:
 
     try:
         from openjarvis.core.config import DEFAULT_CONFIG_DIR
-        from openjarvis.optimize.store import OptimizationStore
+        from openjarvis.learning.optimize.store import OptimizationStore
 
         db_path = DEFAULT_CONFIG_DIR / "optimize.db"
         if not db_path.exists():
@@ -264,7 +264,7 @@ def optimize_results(run_id: str) -> None:
 
     try:
         from openjarvis.core.config import DEFAULT_CONFIG_DIR
-        from openjarvis.optimize.store import OptimizationStore
+        from openjarvis.learning.optimize.store import OptimizationStore
 
         db_path = DEFAULT_CONFIG_DIR / "optimize.db"
         if not db_path.exists():
@@ -330,8 +330,8 @@ def optimize_best(run_id: str, output: Optional[str]) -> None:
 
     try:
         from openjarvis.core.config import DEFAULT_CONFIG_DIR
-        from openjarvis.optimize.optimizer import OptimizationEngine
-        from openjarvis.optimize.store import OptimizationStore
+        from openjarvis.learning.optimize.optimizer import OptimizationEngine
+        from openjarvis.learning.optimize.store import OptimizationStore
 
         db_path = DEFAULT_CONFIG_DIR / "optimize.db"
         if not db_path.exists():

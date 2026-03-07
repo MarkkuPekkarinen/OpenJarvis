@@ -1,4 +1,5 @@
 //! PyO3 bridge — exposes ~50 Rust classes to Python via `openjarvis_rust`.
+#![allow(clippy::redundant_closure, unused_variables)]
 
 use once_cell::sync::Lazy;
 use pyo3::prelude::*;
@@ -84,6 +85,8 @@ fn openjarvis_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<agents::PySimpleAgent>()?;
     m.add_class::<agents::PyOrchestratorAgent>()?;
     m.add_class::<agents::PyNativeReActAgent>()?;
+    m.add_class::<agents::PyNativeOpenHandsAgent>()?;
+    m.add_class::<agents::PyMonitorOperativeAgent>()?;
     m.add_class::<agents::PyLoopGuard>()?;
 
     // --- Tools ---
@@ -101,6 +104,9 @@ fn openjarvis_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // --- Storage / Memory ---
     m.add_class::<storage::PySQLiteMemory>()?;
     m.add_class::<storage::PyBM25Memory>()?;
+    m.add_class::<storage::PyFAISSMemory>()?;
+    m.add_class::<storage::PyColBERTMemory>()?;
+    m.add_class::<storage::PyHybridMemory>()?;
     m.add_class::<storage::PyKnowledgeGraphMemory>()?;
 
     // --- Security ---
@@ -133,6 +139,8 @@ fn openjarvis_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<learning::PyHeuristicRouter>()?;
     m.add_class::<learning::PyBanditRouterPolicy>()?;
     m.add_class::<learning::PyGRPORouterPolicy>()?;
+    m.add_class::<learning::PyOptimizationStore>()?;
+    m.add_class::<learning::PyLLMOptimizer>()?;
     m.add_class::<learning::PySFTRouterPolicy>()?;
     m.add_class::<learning::PyHeuristicRewardFunction>()?;
     m.add_class::<learning::PySkillDiscovery>()?;

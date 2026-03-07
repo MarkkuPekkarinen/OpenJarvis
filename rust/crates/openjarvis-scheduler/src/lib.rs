@@ -27,7 +27,7 @@ impl ScheduleType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "cron" => Some(Self::Cron),
             "interval" => Some(Self::Interval),
@@ -62,7 +62,7 @@ impl TaskStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "active" => Some(Self::Active),
             "paused" => Some(Self::Paused),
@@ -317,9 +317,9 @@ fn row_to_task(row: &rusqlite::Row<'_>) -> ScheduledTask {
         id: row.get(0).unwrap_or_default(),
         name: row.get(1).unwrap_or_default(),
         description: row.get(2).unwrap_or_default(),
-        schedule_type: ScheduleType::from_str(&type_str).unwrap_or(ScheduleType::Once),
+        schedule_type: ScheduleType::parse(&type_str).unwrap_or(ScheduleType::Once),
         schedule_value: row.get(4).unwrap_or_default(),
-        status: TaskStatus::from_str(&status_str).unwrap_or(TaskStatus::Active),
+        status: TaskStatus::parse(&status_str).unwrap_or(TaskStatus::Active),
         last_run: row.get(6).ok(),
         next_run: row.get(7).ok(),
         created_at: row.get(8).unwrap_or(0.0),

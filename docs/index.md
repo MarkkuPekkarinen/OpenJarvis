@@ -1,16 +1,17 @@
 ---
 title: OpenJarvis
-description: Programming abstractions for on-device AI
+description: Composable, Programmable Systems for On-Device, Personal AI
 hide:
   - navigation
 ---
 
-# _Programming abstractions_ for on-device AI
+# _Composable, Programmable Systems_ for On-Device, Personal AI
 
 <p class="hero-tagline">
-OpenJarvis is a modular framework for building, running, and learning from local AI systems.
-Five composable pillars — each with a clear ABC interface and decorator-based registry.
-Everything runs on your hardware. Cloud APIs are optional.
+OpenJarvis is a research framework for composable, on-device AI systems.
+Five programmable pillars — Intelligence, Engine, Agents, Tools, and Learning —
+each with a clear ABC interface and decorator-based registry.
+Build personal AI that runs on your hardware. Cloud APIs are optional.
 </p>
 
 <div class="install-cmd">> pip install openjarvis</div>
@@ -24,7 +25,7 @@ Everything runs on your hardware. Cloud APIs are optional.
     Run the full chat UI locally with one script:
 
     ```bash
-    git clone https://github.com/HazyResearch/OpenJarvis.git
+    git clone https://github.com/open-jarvis/OpenJarvis.git
     cd OpenJarvis
     ./scripts/quickstart.sh
     ```
@@ -40,16 +41,16 @@ Everything runs on your hardware. Cloud APIs are optional.
     **Step 1.** Start the backend:
 
     ```bash
-    git clone https://github.com/HazyResearch/OpenJarvis.git
+    git clone https://github.com/open-jarvis/OpenJarvis.git
     cd OpenJarvis
     ./scripts/quickstart.sh
     ```
 
     **Step 2.** Download and open the desktop app:
 
-    [Download for macOS (Apple Silicon)](https://github.com/HazyResearch/OpenJarvis/releases/download/desktop-latest/OpenJarvis_1.0.0_aarch64.dmg){ .md-button .md-button--primary }
+    [Download for macOS (Apple Silicon)](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-latest/OpenJarvis_1.0.0_aarch64.dmg){ .md-button .md-button--primary }
 
-    Also available for [Windows](https://github.com/HazyResearch/OpenJarvis/releases/download/desktop-latest/OpenJarvis_1.0.0_x64-setup.exe), [Linux (DEB)](https://github.com/HazyResearch/OpenJarvis/releases/download/desktop-latest/OpenJarvis_1.0.0_amd64.deb), and [Linux (RPM)](https://github.com/HazyResearch/OpenJarvis/releases/download/desktop-latest/OpenJarvis-1.0.0-1.x86_64.rpm). See the [Downloads](downloads.md) page for details.
+    Also available for [Windows](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-latest/OpenJarvis_1.0.0_x64-setup.exe), [Linux (DEB)](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-latest/OpenJarvis_1.0.0_amd64.deb), and [Linux (RPM)](https://github.com/open-jarvis/OpenJarvis/releases/download/desktop-latest/OpenJarvis-1.0.0-1.x86_64.rpm). See the [Downloads](downloads.md) page for details.
 
     The app connects to `http://localhost:8000` automatically.
 
@@ -168,7 +169,7 @@ Everything runs on your hardware. Cloud APIs are optional.
 
     Five-pillar design, registry pattern, query flow, and cross-cutting learning.
 
--   **[API Reference](api/index.md)**
+-   **[API Reference](api-reference/openjarvis/index.md)**
 
     ---
 

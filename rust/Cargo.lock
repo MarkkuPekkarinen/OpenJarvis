@@ -1297,10 +1297,12 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

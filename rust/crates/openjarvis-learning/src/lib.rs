@@ -10,6 +10,7 @@ pub mod heuristic;
 pub mod heuristic_reward;
 pub mod icl_updater;
 pub mod learning_orchestrator;
+pub mod optimize;
 pub mod orchestrator_types;
 pub mod reward;
 pub mod router_enum;

@@ -23,6 +23,7 @@ env/
 
 # Testing
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -42,7 +43,12 @@ Thumbs.db
 # Project
 *.sqlite
 *.db
+*.jsonl
+*.npz
 results/
+logs/
+traces/
+coding_task_*
 get-pip.py
 
 # MkDocs build output
@@ -70,5 +76,9 @@ docs/plans/
 # Tauri auto-generated schemas
 **/src-tauri/gen/schemas/
 
-# Rust build artifacts
-rust/target/
+# NFS lock artifacts
+.nfs*
+**/.nfs*
+
+# Research output
+research_mining_*
