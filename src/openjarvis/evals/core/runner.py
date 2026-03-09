@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from openjarvis.evals.core.backend import InferenceBackend
 from openjarvis.evals.core.dataset import DatasetProvider
+from openjarvis.evals.core.export import _hardware_info_dict
 from openjarvis.evals.core.scorer import Scorer
 from openjarvis.evals.core.tracker import ResultTracker
 from openjarvis.evals.core.types import (
@@ -940,6 +941,7 @@ def _metric_stats_to_dict(ms: Optional[MetricStats]) -> Optional[Dict[str, float
 def _summary_to_dict(s: RunSummary) -> Dict[str, Any]:
     """Convert a RunSummary to a JSON-serializable dict."""
     return {
+        "hardware_info": _hardware_info_dict(),
         "benchmark": s.benchmark,
         "category": s.category,
         "backend": s.backend,

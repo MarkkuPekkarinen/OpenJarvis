@@ -28,7 +28,7 @@ class OllamaEngine(InferenceEngine):
         self,
         host: str = "http://localhost:11434",
         *,
-        timeout: float = 600.0,
+        timeout: float = 1800.0,
     ) -> None:
         # Allow OLLAMA_HOST env var to override the default
         env_host = os.environ.get("OLLAMA_HOST")

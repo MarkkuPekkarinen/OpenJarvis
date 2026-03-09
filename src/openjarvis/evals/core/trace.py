@@ -26,6 +26,8 @@ class TurnTrace:
     gpu_power_avg_watts: Optional[float] = None
     cpu_power_avg_watts: Optional[float] = None
     cost_usd: Optional[float] = None
+    # Per-action energy breakdown (lm_inference vs tool_call granularity)
+    action_energy_breakdown: Optional[List[Dict[str, Any]]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -42,6 +44,7 @@ class TurnTrace:
             "gpu_power_avg_watts": self.gpu_power_avg_watts,
             "cpu_power_avg_watts": self.cpu_power_avg_watts,
             "cost_usd": self.cost_usd,
+            "action_energy_breakdown": self.action_energy_breakdown,
         }
 
     @classmethod
@@ -60,6 +63,7 @@ class TurnTrace:
             gpu_power_avg_watts=d.get("gpu_power_avg_watts"),
             cpu_power_avg_watts=d.get("cpu_power_avg_watts"),
             cost_usd=d.get("cost_usd"),
+            action_energy_breakdown=d.get("action_energy_breakdown"),
         )
 
 

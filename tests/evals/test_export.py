@@ -307,3 +307,107 @@ class TestQueryTraceMbuRoundTrip:
         d = trace.to_dict()
         assert "query_mbu_avg_pct" in d
         assert "query_mbu_max_pct" in d
+
+
+class TestActionEnergyBreakdown:
+    def test_turn_trace_round_trip(self):
+        breakdown = [
+            {
+                "action_type": "lm_inference",
+                "duration_s": 1.5,
+                "gpu_energy_joules": 10.0,
+                "cpu_energy_joules": 0.5,
+            },
+            {
+                "action_type": "tool_call:calculator",
+                "duration_s": 0.2,
+                "gpu_energy_joules": 0.1,
+                "cpu_energy_joules": 0.01,
+            },
+        ]
+        turn = TurnTrace(
+            turn_index=0,
+            action_energy_breakdown=breakdown,
+        )
+        d = turn.to_dict()
+        assert d["action_energy_breakdown"] is not None
+        assert len(d["action_energy_breakdown"]) == 2
+        assert d["action_energy_breakdown"][0]["action_type"] == "lm_inference"
+
+        restored = TurnTrace.from_dict(d)
+        assert restored.action_energy_breakdown is not None
+        assert len(restored.action_energy_breakdown) == 2
+        action_type = restored.action_energy_breakdown[1]["action_type"]
+        assert action_type == "tool_call:calculator"
+
+    def test_turn_trace_none_by_default(self):
+        turn = TurnTrace(turn_index=0)
+        d = turn.to_dict()
+        assert d["action_energy_breakdown"] is None
+
+        restored = TurnTrace.from_dict(d)
+        assert restored.action_energy_breakdown is None
+
+    def test_action_energy_summary_in_export(self, tmp_path):
+        traces = []
+        for i in range(2):
+            traces.append(QueryTrace(
+                query_id=f"q{i:04d}",
+                workload_type="test",
+                turns=[
+                    TurnTrace(
+                        turn_index=0,
+                        input_tokens=100,
+                        output_tokens=50,
+                        wall_clock_s=2.0,
+                        gpu_energy_joules=5.0,
+                        action_energy_breakdown=[
+                            {
+                                "action_type": "lm_inference",
+                                "duration_s": 1.5,
+                                "gpu_energy_joules": 4.0,
+                                "cpu_energy_joules": 0.3,
+                            },
+                            {
+                                "action_type": "tool_call:search",
+                                "duration_s": 0.5,
+                                "gpu_energy_joules": 1.0,
+                                "cpu_energy_joules": 0.1,
+                            },
+                        ],
+                    ),
+                ],
+                total_wall_clock_s=2.0,
+                completed=True,
+            ))
+        path = tmp_path / "summary.json"
+        export_summary_json(traces, {}, path)
+        summary = json.loads(path.read_text())
+        assert "action_energy_summary" in summary
+        aes = summary["action_energy_summary"]
+        assert "lm_inference" in aes
+        assert aes["lm_inference"]["count"] == 2
+        assert aes["lm_inference"]["total_gpu_energy_joules"] == 8.0
+        assert "tool_call:search" in aes
+        assert aes["tool_call:search"]["count"] == 2
+
+    def test_no_action_energy_summary_when_empty(self, tmp_path):
+        traces = _make_traces()
+        path = tmp_path / "summary.json"
+        export_summary_json(traces, {}, path)
+        summary = json.loads(path.read_text())
+        assert "action_energy_summary" not in summary
+
+
+class TestHardwareInfo:
+    def test_hardware_info_in_summary(self, tmp_path):
+        traces = _make_traces()
+        path = tmp_path / "summary.json"
+        export_summary_json(traces, {}, path)
+        summary = json.loads(path.read_text())
+        assert "hardware_info" in summary
+        hw = summary["hardware_info"]
+        # Should have at least platform and cpu_count
+        assert "platform" in hw
+        assert "cpu_count" in hw
+        assert hw["cpu_count"] > 0

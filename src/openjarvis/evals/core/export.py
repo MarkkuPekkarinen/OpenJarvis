@@ -184,6 +184,31 @@ def export_hf_dataset(traces: list[QueryTrace], path: Path) -> Path:
     return path
 
 
+def _hardware_info_dict() -> dict[str, Any]:
+    """Detect hardware and return a JSON-serializable dict."""
+    try:
+        from openjarvis.core.config import detect_hardware
+        hw = detect_hardware()
+        info: dict[str, Any] = {
+            "platform": hw.platform,
+            "cpu_brand": hw.cpu_brand,
+            "cpu_count": hw.cpu_count,
+            "ram_gb": hw.ram_gb,
+        }
+        if hw.gpu is not None:
+            info["gpu"] = {
+                "vendor": hw.gpu.vendor,
+                "name": hw.gpu.name,
+                "vram_gb": hw.gpu.vram_gb,
+                "count": hw.gpu.count,
+            }
+        else:
+            info["gpu"] = None
+        return info
+    except Exception:
+        return {}
+
+
 def export_summary_json(
     traces: list[QueryTrace],
     config: dict[str, Any],
@@ -293,9 +318,37 @@ def export_summary_json(
 
     normalized = _compute_normalized(traces)
 
+    # Aggregate per-action energy across all turns
+    action_totals: dict[str, dict[str, float]] = {}
+    for trace in traces:
+        for turn in trace.turns:
+            if not turn.action_energy_breakdown:
+                continue
+            for action in turn.action_energy_breakdown:
+                atype = action["action_type"]
+                if atype not in action_totals:
+                    action_totals[atype] = {
+                        "count": 0,
+                        "total_duration_s": 0.0,
+                        "total_gpu_energy_joules": 0.0,
+                        "total_cpu_energy_joules": 0.0,
+                    }
+                entry = action_totals[atype]
+                entry["count"] += 1
+                entry["total_duration_s"] += action.get(
+                    "duration_s", 0.0,
+                )
+                gpu_e = action.get("gpu_energy_joules")
+                if gpu_e is not None:
+                    entry["total_gpu_energy_joules"] += gpu_e
+                cpu_e = action.get("cpu_energy_joules")
+                if cpu_e is not None:
+                    entry["total_cpu_energy_joules"] += cpu_e
+
     summary: dict[str, Any] = {
         "generated_at": time.time(),
         "config": config,
+        "hardware_info": _hardware_info_dict(),
         "totals": {
             "queries": total_queries,
             "completed": completed,
@@ -320,6 +373,9 @@ def export_summary_json(
         "statistics": stats,
         "efficiency": efficiency,
     }
+
+    if action_totals:
+        summary["action_energy_summary"] = action_totals
 
     if normalized is not None:
         summary["normalized_statistics"] = normalized["normalized_statistics"]
