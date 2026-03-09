@@ -36,6 +36,89 @@ BUILTIN_MODELS: List[ModelSpec] = [
             "hf_repo": "Qwen/Qwen3-32B",
         },
     ),
+    # -----------------------------------------------------------------------
+    # Local models — Qwen3.5 (MoE)
+    # -----------------------------------------------------------------------
+    ModelSpec(
+        model_id="qwen3.5:3b",
+        name="Qwen3.5 3B",
+        parameter_count_b=3.0,
+        active_parameter_count_b=0.6,
+        context_length=131072,
+        supported_engines=("ollama", "vllm", "llamacpp", "sglang"),
+        provider="alibaba",
+        metadata={
+            "architecture": "moe",
+            "hf_repo": "Qwen/Qwen3.5-3B",
+        },
+    ),
+    ModelSpec(
+        model_id="qwen3.5:8b",
+        name="Qwen3.5 8B",
+        parameter_count_b=8.0,
+        active_parameter_count_b=1.0,
+        context_length=131072,
+        supported_engines=("ollama", "vllm", "llamacpp", "sglang"),
+        provider="alibaba",
+        metadata={
+            "architecture": "moe",
+            "hf_repo": "Qwen/Qwen3.5-8B",
+        },
+    ),
+    ModelSpec(
+        model_id="qwen3.5:14b",
+        name="Qwen3.5 14B",
+        parameter_count_b=14.0,
+        active_parameter_count_b=2.0,
+        context_length=131072,
+        supported_engines=("ollama", "vllm", "llamacpp", "sglang"),
+        provider="alibaba",
+        metadata={
+            "architecture": "moe",
+            "hf_repo": "Qwen/Qwen3.5-14B",
+        },
+    ),
+    ModelSpec(
+        model_id="qwen3.5:35b",
+        name="Qwen3.5 35B",
+        parameter_count_b=35.0,
+        active_parameter_count_b=3.0,
+        context_length=131072,
+        supported_engines=("ollama", "vllm", "sglang"),
+        provider="alibaba",
+        metadata={
+            "architecture": "moe",
+            "hf_repo": "Qwen/Qwen3.5-35B",
+        },
+    ),
+    ModelSpec(
+        model_id="qwen3.5:122b",
+        name="Qwen3.5 122B",
+        parameter_count_b=122.0,
+        active_parameter_count_b=10.0,
+        context_length=131072,
+        min_vram_gb=70.0,
+        supported_engines=("ollama", "vllm", "sglang"),
+        provider="alibaba",
+        metadata={
+            "architecture": "moe",
+            "hf_repo": "Qwen/Qwen3.5-122B",
+        },
+    ),
+    ModelSpec(
+        model_id="qwen3.5:397b",
+        name="Qwen3.5 397B",
+        parameter_count_b=397.0,
+        active_parameter_count_b=17.0,
+        context_length=131072,
+        min_vram_gb=220.0,
+        supported_engines=("vllm", "sglang"),
+        provider="alibaba",
+        metadata={
+            "architecture": "moe",
+            "hf_repo": "Qwen/Qwen3.5-397B",
+        },
+    ),
     ModelSpec(
         model_id="llama3.3:70b",
         name="Llama 3.3 70B",
@@ -437,6 +520,49 @@ BUILTIN_MODELS: List[ModelSpec] = [
             "teacher": "Claude 4.5 Opus",
             "quantization": "GGUF Q4_K_M / Q8_0",
             "license": "apache-2.0",
+        },
+    ),
+    # -----------------------------------------------------------------------
+    # Local models — IBM Granite
+    # -----------------------------------------------------------------------
+    ModelSpec(
+        model_id="granite3.3:8b",
+        name="Granite 3.3 8B",
+        parameter_count_b=8.0,
+        context_length=128000,
+        supported_engines=("ollama", "vllm", "llamacpp"),
+        provider="ibm",
+        metadata={
+            "architecture": "dense",
+            "hf_repo": "ibm-granite/granite-3.3-8b-instruct",
+            "url": "https://www.ibm.com/granite",
+        },
+    ),
+    ModelSpec(
+        model_id="granite4.0-micro",
+        name="Granite 4.0 Micro 3B",
+        parameter_count_b=3.0,
+        context_length=128000,
+        supported_engines=("ollama", "vllm", "llamacpp"),
+        provider="ibm",
+        metadata={
+            "architecture": "dense",
+            "hf_repo": "ibm-granite/granite-4.0-micro",
+            "url": "https://www.ibm.com/granite",
+        },
+    ),
+    ModelSpec(
+        model_id="granite4.0-h-small",
+        name="Granite 4.0 H Small 32B",
+        parameter_count_b=32.0,
+        active_parameter_count_b=9.0,
+        context_length=128000,
+        supported_engines=("ollama", "vllm"),
+        provider="ibm",
+        metadata={
+            "architecture": "moe",
+            "hf_repo": "ibm-granite/granite-4.0-h-small",
+            "url": "https://www.ibm.com/granite",
         },
     ),
     # -----------------------------------------------------------------------

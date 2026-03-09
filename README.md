@@ -102,6 +102,14 @@ OpenJarvis is part of [Intelligence Per Watt](https://www.intelligence-per-watt.
   <a href="https://lambda.ai/">Lambda Labs</a>
 </p>
 
+## Acknowledgements
+
+<p>
+  <a href="https://ollama.com/">Ollama</a> &bull;
+  <a href="https://research.ibm.com/">IBM Research</a> &bull;
+  <a href="https://hai.stanford.edu/">Stanford HAI</a>
+</p>
+
 ## License
 
 [Apache 2.0](LICENSE)

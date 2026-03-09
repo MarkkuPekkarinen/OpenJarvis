@@ -186,3 +186,11 @@ Build personal AI that runs on your hardware. Cloud APIs are optional.
     Contributing guide, extension patterns, roadmap, and changelog.
 
 </div>
+
+## Acknowledgements
+
+<p>
+  <a href="https://ollama.com/">Ollama</a> &bull;
+  <a href="https://research.ibm.com/">IBM Research</a> &bull;
+  <a href="https://hai.stanford.edu/">Stanford HAI</a>
+</p>

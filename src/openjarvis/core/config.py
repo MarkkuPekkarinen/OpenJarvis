@@ -209,6 +209,44 @@ def recommend_engine(hw: HardwareInfo) -> str:
     return "llamacpp"
 
 
+def recommend_model(hw: HardwareInfo, engine: str) -> str:
+    """Suggest the largest Qwen3.5 model that fits the detected hardware.
+
+    Uses llmfit-style VRAM estimation: Q4_K_M quantization is ~0.5 bytes/param
+    with 10% overhead.  For MoE models Ollama loads full model weights, so we
+    use ``parameter_count_b`` (total), not ``active_parameter_count_b``.
+    """
+    from openjarvis.intelligence.model_catalog import BUILTIN_MODELS
+
+    # Determine available memory in GB
+    gpu = hw.gpu
+    if gpu and gpu.vram_gb > 0:
+        available_gb = gpu.vram_gb * max(gpu.count, 1) * 0.9
+    elif hw.ram_gb > 0:
+        available_gb = (hw.ram_gb - 4) * 0.8
+    else:
+        return ""
+
+    # Filter Qwen3.5 models compatible with the chosen engine
+    candidates = [
+        spec
+        for spec in BUILTIN_MODELS
+        if spec.provider == "alibaba"
+        and spec.model_id.startswith("qwen3.5:")
+        and engine in spec.supported_engines
+    ]
+
+    # Sort by parameter count descending — pick the largest that fits
+    candidates.sort(key=lambda s: s.parameter_count_b, reverse=True)
+
+    for spec in candidates:
+        estimated_gb = spec.parameter_count_b * 0.5 * 1.1
+        if estimated_gb <= available_gb:
+            return spec.model_id
+
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Configuration hierarchy
 # ---------------------------------------------------------------------------
@@ -1070,9 +1108,14 @@ def load_config(path: Optional[Path] = None) -> JarvisConfig:
 def generate_default_toml(hw: HardwareInfo) -> str:
     """Render a commented TOML string suitable for ``~/.openjarvis/config.toml``."""
     engine = recommend_engine(hw)
+    model = recommend_model(hw, engine)
     gpu_line = ""
     if hw.gpu:
         gpu_line = f"# Detected GPU: {hw.gpu.name} ({hw.gpu.vram_gb} GB VRAM)"
+
+    model_comment = ""
+    if model:
+        model_comment = "  # recommended for your hardware"
 
     return f"""\
 # OpenJarvis configuration
@@ -1117,7 +1160,7 @@ host = "http://localhost:8080"
 # host = "http://localhost:8079"
 
 [intelligence]
-default_model = ""
+default_model = "{model}"{model_comment}
 fallback_model = ""
 # model_path = ""              # Local weights (HF repo, GGUF file, etc.)
 # checkpoint_path = ""         # Checkpoint/adapter path
@@ -1330,4 +1373,5 @@ __all__ = [
     "generate_default_toml",
     "load_config",
     "recommend_engine",
+    "recommend_model",
 ]
