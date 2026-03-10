@@ -50,7 +50,7 @@ class TestBuildSearchSpace:
         assert dim.dim_type == "categorical"
         assert dim.values == ["orchestrator", "native_react"]
         assert dim.description == "Agent architecture"
-        assert dim.pillar == "agent"
+        assert dim.primitive == "agent"
 
     def test_fixed_params_preserved(self) -> None:
         config = {
@@ -104,7 +104,7 @@ class TestBuildSearchSpace:
         assert dim.dim_type == "continuous"
         assert dim.low == 0.0
         assert dim.high == 1.0
-        assert dim.pillar == "intelligence"
+        assert dim.primitive == "intelligence"
 
     def test_integer_dimension_build(self) -> None:
         config = {
@@ -149,7 +149,7 @@ class TestBuildSearchSpace:
             "think",
             "web_search",
         ]
-        assert dim.pillar == "tools"
+        assert dim.primitive == "tools"
 
     def test_text_dimension_build(self) -> None:
         config = {
@@ -167,7 +167,7 @@ class TestBuildSearchSpace:
         dim = space.dimensions[0]
         assert dim.dim_type == "text"
         assert dim.values == []
-        assert dim.pillar == "intelligence"
+        assert dim.primitive == "intelligence"
 
     def test_multiple_dimensions(self) -> None:
         config = {
@@ -207,7 +207,7 @@ class TestBuildSearchSpace:
         assert space.fixed == {}
         assert space.constraints == []
 
-    def test_pillar_inferred_from_name(self) -> None:
+    def test_primitive_inferred_from_name(self) -> None:
         config = {
             "optimize": {
                 "search": [
@@ -225,10 +225,10 @@ class TestBuildSearchSpace:
             },
         }
         space = build_search_space(config)
-        assert space.dimensions[0].pillar == "learning"
-        assert space.dimensions[1].pillar == "engine"
+        assert space.dimensions[0].primitive == "learning"
+        assert space.dimensions[1].primitive == "engine"
 
-    def test_no_dot_in_name_gives_empty_pillar(self) -> None:
+    def test_no_dot_in_name_gives_empty_primitive(self) -> None:
         config = {
             "optimize": {
                 "search": [
@@ -241,7 +241,7 @@ class TestBuildSearchSpace:
             },
         }
         space = build_search_space(config)
-        assert space.dimensions[0].pillar == ""
+        assert space.dimensions[0].primitive == ""
 
     def test_missing_description_defaults_empty(self) -> None:
         config = {
@@ -308,16 +308,16 @@ class TestDefaultSearchSpace:
     def test_is_search_space(self) -> None:
         assert isinstance(DEFAULT_SEARCH_SPACE, SearchSpace)
 
-    def test_has_all_five_pillars(self) -> None:
-        pillars = {dim.pillar for dim in _DIMS}
-        assert "intelligence" in pillars
-        assert "engine" in pillars
-        assert "agent" in pillars
-        assert "tools" in pillars
-        assert "learning" in pillars
+    def test_has_all_five_primitives(self) -> None:
+        primitives = {dim.primitive for dim in _DIMS}
+        assert "intelligence" in primitives
+        assert "engine" in primitives
+        assert "agent" in primitives
+        assert "tools" in primitives
+        assert "learning" in primitives
 
     def test_intelligence_dimensions(self) -> None:
-        intel_dims = [d for d in _DIMS if d.pillar == "intelligence"]
+        intel_dims = [d for d in _DIMS if d.primitive == "intelligence"]
         intel_names = {d.name for d in intel_dims}
         assert "intelligence.model" in intel_names
         assert "intelligence.temperature" in intel_names
@@ -392,10 +392,10 @@ class TestDefaultSearchSpace:
                 f"Dimension {dim.name} has no description"
             )
 
-    def test_all_dimensions_have_pillars(self) -> None:
+    def test_all_dimensions_have_primitives(self) -> None:
         for dim in _DIMS:
-            assert dim.pillar != "", (
-                f"Dimension {dim.name} has no pillar"
+            assert dim.primitive != "", (
+                f"Dimension {dim.name} has no primitive"
             )
 
 
@@ -419,14 +419,14 @@ class TestToPromptDescription:
                 f"Dimension {dim.name} not in description"
             )
 
-    def test_all_pillar_headers_in_description(self) -> None:
+    def test_all_primitive_headers_in_description(self) -> None:
         desc = DEFAULT_SEARCH_SPACE.to_prompt_description()
-        for pillar in (
+        for primitive in (
             "Intelligence", "Engine", "Agent",
             "Tools", "Learning",
         ):
-            assert f"## {pillar}" in desc, (
-                f"Pillar header {pillar} not in description"
+            assert f"## {primitive}" in desc, (
+                f"Primitive header {primitive} not in description"
             )
 
     def test_constraints_in_description(self) -> None:

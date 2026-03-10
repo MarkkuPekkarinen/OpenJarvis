@@ -273,7 +273,8 @@ class LLMOptimizer:
             "Provide your analysis as a JSON object inside a ```json code block with:\n"
             '1. "summary_text": string with detailed analysis\n'
             '2. "failure_patterns": list of identified failure patterns\n'
-            '3. "primitive_ratings": dict mapping primitive names to "high"/"medium"/"low"\n'
+            '3. "primitive_ratings": dict mapping primitive names '
+            'to "high"/"medium"/"low"\n'
             '4. "suggested_changes": list of specific config changes to try\n'
             '5. "target_primitive": which primitive to change next '
             "(intelligence/engine/agent/tools/learning)"
