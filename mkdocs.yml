@@ -122,6 +122,9 @@ markdown_extensions:
       custom_checkbox: true
   - pymdownx.tilde
 
+extra_javascript:
+  - javascripts/leaderboard.js
+
 extra:
   social:
     - icon: fontawesome/brands/github
