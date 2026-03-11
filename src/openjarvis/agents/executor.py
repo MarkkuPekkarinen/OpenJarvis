@@ -6,6 +6,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from openjarvis.agents._stubs import AgentResult
 from openjarvis.agents.errors import (
     AgentTickError,
     EscalateError,
@@ -80,7 +81,7 @@ class AgentExecutor:
             tick_duration = time.time() - tick_start
             self._finalize_tick(agent_id, result, error_info, tick_duration)
 
-    def _run_with_retries(self, agent: dict) -> str:
+    def _run_with_retries(self, agent: dict) -> AgentResult:
         """Invoke the agent, retrying on RetryableError up to _MAX_RETRIES."""
         last_error: AgentTickError | None = None
 
@@ -111,7 +112,7 @@ class AgentExecutor:
         # Should not reach here, but just in case
         raise last_error or FatalError("max retries exhausted")
 
-    def _invoke_agent(self, agent: dict) -> str:
+    def _invoke_agent(self, agent: dict) -> AgentResult:
         """Invoke the actual agent run. Tests mock this method."""
         from openjarvis.agents import AgentRegistry
 
@@ -150,14 +151,12 @@ class AgentExecutor:
             for m in pending:
                 self._manager.mark_message_delivered(m["id"])
 
-        # AgentResult has a .content attribute (str)
-        result = agent_instance.run(context)
-        return result.content
+        return agent_instance.run(context)
 
     def _finalize_tick(
         self,
         agent_id: str,
-        result: str | None,
+        result: AgentResult | None,
         error: AgentTickError | None,
         duration: float,
     ) -> None:
@@ -166,9 +165,20 @@ class AgentExecutor:
             # Success
             self._manager.end_tick(agent_id)
             self._manager.update_agent(agent_id, total_runs_increment=1)
+
+            # Accumulate budget metrics from AgentResult metadata
             if result:
+                tokens = result.metadata.get("tokens_used", 0)
+                cost = result.metadata.get("cost", 0.0)
+                budget_kwargs: dict[str, Any] = {"stall_retries": 0}
+                if tokens > 0:
+                    budget_kwargs["total_tokens_increment"] = tokens
+                if cost > 0:
+                    budget_kwargs["total_cost_increment"] = cost
+                self._manager.update_agent(agent_id, **budget_kwargs)
+
                 self._manager.update_summary_memory(
-                    agent_id, result[:2000],
+                    agent_id, result.content[:2000],
                 )
             self._bus.publish(EventType.AGENT_TICK_END, {
                 "agent_id": agent_id,
