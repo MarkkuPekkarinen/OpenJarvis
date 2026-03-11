@@ -36,10 +36,12 @@ class AgentExecutor:
         manager: AgentManager,
         event_bus: EventBus,
         system: Any = None,
+        trace_store: Any = None,
     ) -> None:
         self._system = system
         self._manager = manager
         self._bus = event_bus
+        self._trace_store = trace_store
 
     def set_system(self, system: Any) -> None:
         """Deferred system injection — called after JarvisSystem is constructed."""
@@ -77,6 +79,34 @@ class AgentExecutor:
         self._bus.subscribe(EventType.TOOL_CALL_START, _on_activity)
         self._bus.subscribe(EventType.INFERENCE_START, _on_activity)
 
+        # Trace recording: collect tool call steps
+        trace_steps: list[dict[str, Any]] = []
+
+        def _on_tool_start(event: Any) -> None:
+            if event.data.get("agent") == agent_id:
+                trace_steps.append({
+                    "type": "tool_call",
+                    "input": {
+                        "tool": event.data.get("tool"),
+                        "args": event.data.get("args"),
+                    },
+                    "start_time": event.timestamp,
+                })
+
+        def _on_tool_end(event: Any) -> None:
+            if event.data.get("agent") == agent_id and trace_steps:
+                for step in reversed(trace_steps):
+                    if step["type"] == "tool_call" and "output" not in step:
+                        step["output"] = {
+                            "result": str(event.data.get("result", ""))[:4096],
+                        }
+                        step["duration"] = event.data.get("duration", 0)
+                        break
+
+        if self._trace_store:
+            self._bus.subscribe(EventType.TOOL_CALL_START, _on_tool_start)
+            self._bus.subscribe(EventType.TOOL_CALL_END, _on_tool_end)
+
         tick_start = time.time()
         result = None
         error_info = None
@@ -88,8 +118,19 @@ class AgentExecutor:
         finally:
             self._bus.unsubscribe(EventType.TOOL_CALL_START, _on_activity)
             self._bus.unsubscribe(EventType.INFERENCE_START, _on_activity)
+
+            if self._trace_store:
+                self._bus.unsubscribe(EventType.TOOL_CALL_START, _on_tool_start)
+                self._bus.unsubscribe(EventType.TOOL_CALL_END, _on_tool_end)
+
             tick_duration = time.time() - tick_start
             self._finalize_tick(agent_id, result, error_info, tick_duration)
+
+            if self._trace_store:
+                self._save_trace(
+                    agent_id, agent, result, error_info,
+                    tick_start, tick_duration, trace_steps,
+                )
 
     def _run_with_retries(self, agent: dict) -> AgentResult:
         """Invoke the agent, retrying on RetryableError up to _MAX_RETRIES."""
@@ -237,3 +278,49 @@ class AgentExecutor:
                 ),
                 "duration": duration,
             })
+
+    def _save_trace(
+        self,
+        agent_id: str,
+        agent: dict,
+        result: AgentResult | None,
+        error: AgentTickError | None,
+        tick_start: float,
+        tick_duration: float,
+        trace_steps: list[dict[str, Any]],
+    ) -> None:
+        """Persist an execution trace to the trace store."""
+        from openjarvis.core.types import StepType, Trace, TraceStep
+
+        steps = []
+        for s in trace_steps:
+            steps.append(TraceStep(
+                step_type=(
+                    StepType.TOOL_CALL
+                    if s["type"] == "tool_call"
+                    else StepType.GENERATE
+                ),
+                input=s.get("input", {}),
+                output=s.get("output", {}),
+                duration_seconds=s.get("duration", 0),
+                timestamp=s.get("start_time", tick_start),
+            ))
+
+        outcome = "success" if error is None else "error"
+        trace = Trace(
+            agent=agent_id,
+            query=agent.get("summary_memory", "")[:200],
+            result=result.content[:200] if result else "",
+            model=agent.get("config", {}).get("model", ""),
+            outcome=outcome,
+            steps=steps,
+            started_at=tick_start,
+            ended_at=tick_start + tick_duration,
+            total_latency_seconds=tick_duration,
+        )
+        try:
+            self._trace_store.save(trace)
+        except Exception:
+            logger.warning(
+                "Failed to save trace for agent %s", agent_id, exc_info=True,
+            )
