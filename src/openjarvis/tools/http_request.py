@@ -27,6 +27,7 @@ class HttpRequestTool(BaseTool):
     """Make HTTP requests to external APIs with SSRF protection."""
 
     tool_id = "http_request"
+    is_local = False
 
     @property
     def spec(self) -> ToolSpec:
@@ -107,9 +108,14 @@ class HttpRequestTool(BaseTool):
         body = params.get("body")
         timeout = params.get("timeout", 30)
 
-        from openjarvis._rust_bridge import get_rust_module
-        _rust = get_rust_module()
-        if not headers:
+        _rust = None
+        try:
+            from openjarvis._rust_bridge import get_rust_module
+
+            _rust = get_rust_module()
+        except ImportError:
+            pass
+        if _rust is not None and not headers:
             try:
                 content = _rust.HttpRequestTool().execute(url, method, body)
                 return ToolResult(

@@ -33,11 +33,13 @@ class SQLiteMemory(MemoryBackend):
     def __init__(self, db_path: str | Path = "") -> None:
         if not db_path:
             from openjarvis.core.config import DEFAULT_CONFIG_DIR
+
             db_path = str(DEFAULT_CONFIG_DIR / "memory.db")
 
         self._db_path = str(db_path)
 
         from openjarvis._rust_bridge import get_rust_module
+
         _rust = get_rust_module()
         self._rust_impl = _rust.SQLiteMemory(self._db_path)
         self._conn = None  # type: ignore[assignment]
@@ -56,33 +58,8 @@ class SQLiteMemory(MemoryBackend):
             USING fts5(
                 content,
                 source,
-                content=documents,
-                content_rowid=rowid
+                tokenize='porter unicode61'
             );
-
-            CREATE TRIGGER IF NOT EXISTS documents_ai
-            AFTER INSERT ON documents BEGIN
-                INSERT INTO documents_fts(rowid, content, source)
-                VALUES (new.rowid, new.content, new.source);
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS documents_ad
-            AFTER DELETE ON documents BEGIN
-                INSERT INTO documents_fts(
-                    documents_fts, rowid, content, source
-                )
-                VALUES ('delete', old.rowid, old.content, old.source);
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS documents_au
-            AFTER UPDATE ON documents BEGIN
-                INSERT INTO documents_fts(
-                    documents_fts, rowid, content, source
-                )
-                VALUES ('delete', old.rowid, old.content, old.source);
-                INSERT INTO documents_fts(rowid, content, source)
-                VALUES (new.rowid, new.content, new.source);
-            END;
         """)
 
     def store(
@@ -96,11 +73,14 @@ class SQLiteMemory(MemoryBackend):
         meta_json = json.dumps(metadata) if metadata else None
         doc_id = self._rust_impl.store(content, source, meta_json)
         bus = get_event_bus()
-        bus.publish(EventType.MEMORY_STORE, {
-            "backend": self.backend_id,
-            "doc_id": doc_id,
-            "source": source,
-        })
+        bus.publish(
+            EventType.MEMORY_STORE,
+            {
+                "backend": self.backend_id,
+                "doc_id": doc_id,
+                "source": source,
+            },
+        )
         return doc_id
 
     def retrieve(
@@ -115,15 +95,19 @@ class SQLiteMemory(MemoryBackend):
             return []
 
         from openjarvis._rust_bridge import retrieval_results_from_json
+
         results = retrieval_results_from_json(
             self._rust_impl.retrieve(query, top_k),
         )
         bus = get_event_bus()
-        bus.publish(EventType.MEMORY_RETRIEVE, {
-            "backend": self.backend_id,
-            "query": query,
-            "num_results": len(results),
-        })
+        bus.publish(
+            EventType.MEMORY_RETRIEVE,
+            {
+                "backend": self.backend_id,
+                "query": query,
+                "num_results": len(results),
+            },
+        )
         return results
 
     def delete(self, doc_id: str) -> bool:

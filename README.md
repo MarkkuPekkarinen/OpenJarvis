@@ -19,6 +19,8 @@
 > **[Project Site](https://scalingintelligence.stanford.edu/blogs/openjarvis/)**
 >
 > **[Leaderboard](https://open-jarvis.github.io/OpenJarvis/leaderboard/)**
+>
+> **[Roadmap](https://open-jarvis.github.io/OpenJarvis/development/roadmap/)**
 
 ## Why OpenJarvis?
 
@@ -28,68 +30,70 @@ OpenJarvis is that stack. It is an opinionated framework for local-first persona
 
 ## Installation
 
+### Prerequisites
+
+| Tool | Install |
+|------|---------|
+| **Python 3.10+** | [python.org](https://www.python.org/downloads/) |
+| **uv** (Python package manager) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` — or `brew install uv` on macOS |
+| **Rust** | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| **Git** | [git-scm.com](https://git-scm.com/) — or `brew install git` on macOS |
+
+> **macOS users:** see the full [macOS Installation Guide](https://open-jarvis.github.io/OpenJarvis/getting-started/macos/) for a step-by-step walkthrough including Homebrew setup.
+
+### Setup
+
 ```bash
 git clone https://github.com/open-jarvis/OpenJarvis.git
 cd OpenJarvis
 uv sync                           # core framework
 uv sync --extra server             # + FastAPI server
+
+# Build the Rust extension
+uv run maturin develop -m rust/crates/openjarvis-python/Cargo.toml
 ```
 
-You also need a local inference backend: [Ollama](https://ollama.com), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), or [llama.cpp](https://github.com/ggerganov/llama.cpp).
+> **Python 3.14+:** set `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` before the `maturin` command.
+
+You also need a local inference backend: [Ollama](https://ollama.com), [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), or [llama.cpp](https://github.com/ggerganov/llama.cpp). Alternatively, use the `cloud` engine with [OpenAI](https://openai.com), [Anthropic](https://anthropic.com), [Google Gemini](https://ai.google.dev), [OpenRouter](https://openrouter.ai), or [MiniMax](https://www.minimax.io) by setting the corresponding API key environment variable.
 
 ## Quick Start
 
-The fastest path is Ollama on any machine with Python 3.10+:
-
 ```bash
-# 1. Install OpenJarvis
+# 1. Install and detect hardware
 git clone https://github.com/open-jarvis/OpenJarvis.git
 cd OpenJarvis
 uv sync
-
-# 2. Detect hardware and generate config
 uv run jarvis init
 
-# 3. Install and start Ollama (https://ollama.com)
+# 2. Start Ollama and pull a model
 curl -fsSL https://ollama.com/install.sh | sh
-ollama serve                      # start the Ollama server
-
-# 4. Pull a model
+ollama serve &
 ollama pull qwen3:8b
 
-# 5. Ask a question
+# 3. Ask a question
 uv run jarvis ask "What is the capital of France?"
-
-# 6. Verify your setup
-uv run jarvis doctor
 ```
 
-`jarvis init` auto-detects your hardware and recommends the best engine. After init, it prints engine-specific next steps. Run `uv run jarvis doctor` at any time to diagnose configuration or connectivity issues.
+`jarvis init` auto-detects your hardware and recommends the best engine. Run `uv run jarvis doctor` at any time to diagnose issues.
 
-## Development
+Full documentation — including Docker deployment, cloud engines, development setup, and tutorials — at **[open-jarvis.github.io/OpenJarvis](https://open-jarvis.github.io/OpenJarvis/)**.
 
-From source, you need to make sure Rust is installed on System:
+## Contributing
 
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+We welcome contributions! See the [Contributing Guide](CONTRIBUTING.md) for incentives, contribution types, and the PR process.
 
-Then, you need the Rust extension for full functionality (security, tools, agents, etc.):
+Quick start for contributors:
 
 ```bash
-# 1. Clone and install Python deps
 git clone https://github.com/open-jarvis/OpenJarvis.git
 cd OpenJarvis
 uv sync --extra dev
-
-# 2. Build and install the Rust extension (requires Rust toolchain)
-uv run maturin develop -m rust/crates/openjarvis-python/Cargo.toml
-
-# 3. Run tests
+uv run pre-commit install
 uv run pytest tests/ -v
 ```
 
-See [Contributing](docs/development/contributing.md) for more.
+Browse the [Roadmap](https://open-jarvis.github.io/OpenJarvis/development/roadmap/) for areas where help is needed. Comment **"take"** on any issue to get auto-assigned.
 
 ## About
 

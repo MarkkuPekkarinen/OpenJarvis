@@ -1,16 +1,16 @@
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex;
 
 const OLLAMA_PORT: u16 = 11434;
-const JARVIS_PORT: u16 = 8222;
+const JARVIS_PORT: u16 = 8000;
 
 /// Small, fast model pulled at startup so the app opens quickly.
-const STARTUP_MODEL: &str = "qwen3.5:2b";
+const STARTUP_MODEL: &str = "qwen3.5:4b";
 
 /// Tiny fallback model if even the startup model can't be pulled.
 const FALLBACK_MODEL: &str = "qwen3:0.6b";
@@ -86,12 +86,14 @@ fn models_that_fit() -> Vec<&'static str> {
         .collect()
 }
 
-/// Pick the third-largest Qwen3.5 model that fits on this machine.
-/// This leaves comfortable headroom for the OS / other apps while
-/// still providing a capable model.  Falls back gracefully when
-/// fewer models fit.
+/// Pick the default model — prefers STARTUP_MODEL if it fits, otherwise
+/// falls back to the third-largest model that fits on this machine.
 fn preferred_model() -> &'static str {
     let fitting = models_that_fit();
+    // Prefer STARTUP_MODEL when it fits (fast, good quality)
+    if fitting.contains(&STARTUP_MODEL) {
+        return STARTUP_MODEL;
+    }
     match fitting.len() {
         0 => FALLBACK_MODEL,
         1 => fitting[0],
@@ -125,9 +127,18 @@ fn resolve_bin(name: &str) -> String {
     let candidates = {
         let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
         let programfiles = std::env::var("ProgramFiles").unwrap_or_default();
+        let programfiles_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
         vec![
+            // Git for Windows — standard install paths
+            format!("{programfiles}\\Git\\cmd\\{name}.exe"),
+            format!("{programfiles_x86}\\Git\\cmd\\{name}.exe"),
+            format!("{localappdata}\\Programs\\Git\\cmd\\{name}.exe"),
+            // Scoop package manager
+            format!("{home}\\scoop\\shims\\{name}.exe"),
+            // Cargo, local bin
             format!("{home}\\.cargo\\bin\\{name}.exe"),
             format!("{home}\\.local\\bin\\{name}.exe"),
+            // Generic program locations
             format!("{localappdata}\\Programs\\{name}\\{name}.exe"),
             format!("{programfiles}\\{name}\\{name}.exe"),
             // Ollama installs to LOCALAPPDATA on Windows
@@ -142,6 +153,41 @@ fn resolve_bin(name: &str) -> String {
             return path.clone();
         }
     }
+
+    // Fallback: ask the OS to find it on PATH.
+    // On Windows this uses `where.exe`, on Unix `which`.
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = std::process::Command::new("where")
+            .arg(format!("{name}.exe"))
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Some(first_line) = stdout.lines().next() {
+                    let p = first_line.trim();
+                    if !p.is_empty() && std::path::Path::new(p).exists() {
+                        return p.to_string();
+                    }
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(output) = std::process::Command::new("which").arg(name).output() {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Some(first_line) = stdout.lines().next() {
+                    let p = first_line.trim();
+                    if !p.is_empty() && std::path::Path::new(p).exists() {
+                        return p.to_string();
+                    }
+                }
+            }
+        }
+    }
+
     name.to_string()
 }
 
@@ -460,17 +506,90 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         return;
     }
 
-    let project_root = find_project_root();
+    let mut project_root = find_project_root();
 
     if project_root.is_none() {
-        let mut s = status.lock().await;
-        s.error = Some(
-            "Could not find the OpenJarvis project directory. \
-             Clone it with: git clone https://github.com/open-jarvis/OpenJarvis.git ~/OpenJarvis \
-             then relaunch."
-                .into(),
-        );
-        return;
+        // Auto-clone on first launch
+        let git_bin = resolve_bin("git");
+
+        // Check that git is installed
+        if !std::path::Path::new(&git_bin).exists() && git_bin == "git" {
+            let mut s = status.lock().await;
+            s.error = Some(
+                "Could not find 'git'. \
+                 Install it from https://git-scm.com then relaunch."
+                    .into(),
+            );
+            return;
+        }
+
+        let target_path = std::path::PathBuf::from(home_dir()).join("OpenJarvis");
+        let clone_target = target_path.display().to_string();
+
+        // If the directory exists but is not a valid project, don't overwrite
+        if target_path.exists() && !target_path.join("pyproject.toml").exists() {
+            let mut s = status.lock().await;
+            s.error = Some(format!(
+                "{} exists but is not a valid OpenJarvis project. \
+                 Remove it and relaunch, or set OPENJARVIS_ROOT to the correct path.",
+                clone_target,
+            ));
+            return;
+        }
+
+        {
+            let mut s = status.lock().await;
+            s.detail = "Downloading OpenJarvis (first launch)...".into();
+        }
+
+        let clone_result = tokio::process::Command::new(&git_bin)
+            .args([
+                "clone",
+                "--depth",
+                "1",
+                "https://github.com/open-jarvis/OpenJarvis.git",
+                &clone_target,
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+
+        match clone_result {
+            Ok(child) => match child.wait_with_output().await {
+                Ok(output) if output.status.success() => {
+                    project_root = Some(target_path);
+                }
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let mut s = status.lock().await;
+                    s.error = Some(format!(
+                        "Failed to download OpenJarvis: {}. \
+                         Clone manually: git clone https://github.com/open-jarvis/OpenJarvis.git {}",
+                        stderr.trim(),
+                        clone_target,
+                    ));
+                    return;
+                }
+                Err(e) => {
+                    let mut s = status.lock().await;
+                    s.error = Some(format!(
+                        "Failed to download OpenJarvis: {}. \
+                         Clone manually: git clone https://github.com/open-jarvis/OpenJarvis.git {}",
+                        e, clone_target,
+                    ));
+                    return;
+                }
+            },
+            Err(e) => {
+                let mut s = status.lock().await;
+                s.error = Some(format!(
+                    "Could not run git: {}. \
+                     Install git from https://git-scm.com then relaunch.",
+                    e,
+                ));
+                return;
+            }
+        }
     }
 
     // Kill any leftover server on our port from a previous run
@@ -530,7 +649,12 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         s.detail = "Installing dependencies...".into();
     }
     let _ = tokio::process::Command::new(&uv_bin)
-        .args(["sync", "--extra", "server"])
+        .args([
+            "sync",
+            "--extra", "server",
+            "--extra", "inference-cloud",
+            "--extra", "inference-google",
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .current_dir(root)
@@ -548,14 +672,19 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
 
     let mut cmd = tokio::process::Command::new(&uv_bin);
     cmd.args([
-            "run", "jarvis", "serve",
-            "--port", &JARVIS_PORT.to_string(),
-            "--model", startup_model,
-            "--agent", "simple",
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .current_dir(root);
+        "run",
+        "jarvis",
+        "serve",
+        "--port",
+        &JARVIS_PORT.to_string(),
+        "--model",
+        startup_model,
+        "--agent",
+        "simple",
+    ])
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::piped())
+    .current_dir(root);
 
     // Inject cloud API keys from ~/.openjarvis/cloud-keys.env
     for (key, value) in read_cloud_keys() {
@@ -645,9 +774,7 @@ fn api_base() -> String {
 }
 
 #[tauri::command]
-async fn get_setup_status(
-    state: tauri::State<'_, SharedStatus>,
-) -> Result<SetupStatus, String> {
+async fn get_setup_status(state: tauri::State<'_, SharedStatus>) -> Result<SetupStatus, String> {
     Ok(state.lock().await.clone())
 }
 
@@ -668,83 +795,132 @@ async fn start_backend(
 }
 
 #[tauri::command]
-async fn stop_backend(
-    backend: tauri::State<'_, SharedBackend>,
-) -> Result<(), String> {
+async fn stop_backend(backend: tauri::State<'_, SharedBackend>) -> Result<(), String> {
     backend.lock().await.stop_all().await;
     Ok(())
 }
 
 #[tauri::command]
 async fn check_health(api_url: String) -> Result<serde_json::Value, String> {
-    let url = format!("{}/health", if api_url.is_empty() { api_base() } else { api_url });
+    let url = format!(
+        "{}/health",
+        if api_url.is_empty() {
+            api_base()
+        } else {
+            api_url
+        }
+    );
     let resp = reqwest::get(&url)
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_energy(api_url: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/telemetry/energy", base))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_telemetry(api_url: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/telemetry/stats", base))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_traces(api_url: String, limit: u32) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/traces?limit={}", base, limit))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_trace(api_url: String, trace_id: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/traces/{}", base, trace_id))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_learning_stats(api_url: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/learning/stats", base))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_learning_policy(api_url: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/learning/policy", base))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_memory_stats(api_url: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/memory/stats", base))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
@@ -753,7 +929,11 @@ async fn search_memory(
     query: String,
     top_k: u32,
 ) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{}/v1/memory/search", base))
@@ -761,25 +941,39 @@ async fn search_memory(
         .send()
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_agents(api_url: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/agents", base))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
 async fn fetch_models(api_url: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/models", base))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 #[tauri::command]
@@ -802,11 +996,17 @@ async fn run_jarvis_command(args: Vec<String>) -> Result<String, String> {
 
 #[tauri::command]
 async fn fetch_savings(api_url: String) -> Result<serde_json::Value, String> {
-    let base = if api_url.is_empty() { api_base() } else { api_url };
+    let base = if api_url.is_empty() {
+        api_base()
+    } else {
+        api_url
+    };
     let resp = reqwest::get(format!("{}/v1/savings", base))
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    resp.json().await.map_err(|e| format!("Invalid response: {}", e))
+    resp.json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))
 }
 
 /// Transcribe audio via the speech API endpoint.
@@ -851,7 +1051,10 @@ async fn submit_savings(
     }
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("{}/rest/v1/savings_entries?on_conflict=anon_id", supabase_url))
+        .post(format!(
+            "{}/rest/v1/savings_entries?on_conflict=anon_id",
+            supabase_url
+        ))
         .header("Content-Type", "application/json")
         .header("apikey", &supabase_key)
         .header("Authorization", format!("Bearer {}", supabase_key))
@@ -917,8 +1120,7 @@ async fn save_cloud_key(key_name: String, key_value: String) -> Result<(), Strin
         .map(|(k, v)| format!("{}={}", k, v))
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::write(&path, content + "\n")
-        .map_err(|e| format!("Failed to save key: {}", e))?;
+    std::fs::write(&path, content + "\n").map_err(|e| format!("Failed to save key: {}", e))?;
 
     // Set permissions to owner-only (chmod 600)
     #[cfg(unix)]
@@ -926,6 +1128,15 @@ async fn save_cloud_key(key_name: String, key_value: String) -> Result<(), Strin
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
     }
+
+    // Tell the running server to hot-reload its cloud engine so the user
+    // doesn't need to restart the app after entering an API key.
+    let reload_url = format!("http://127.0.0.1:{}/v1/cloud/reload", JARVIS_PORT);
+    let _ = reqwest::Client::new()
+        .post(&reload_url)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await;
 
     Ok(())
 }
@@ -1006,7 +1217,7 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ))
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        // .plugin(tauri_plugin_updater::Builder::new().build()) // disabled for local dev
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -1015,13 +1226,11 @@ pub fn run() {
         }))
         .setup(move |app| {
             // System tray
-            let show = MenuItemBuilder::with_id("show", "Show / Hide")
-                .build(app)?;
+            let show = MenuItemBuilder::with_id("show", "Show / Hide").build(app)?;
             let health = MenuItemBuilder::with_id("health", "Health: starting...")
                 .enabled(false)
                 .build(app)?;
-            let quit = MenuItemBuilder::with_id("quit", "Quit OpenJarvis")
-                .build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Quit OpenJarvis").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show)
@@ -1035,23 +1244,21 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("OpenJarvis")
                 .menu(&menu)
-                .on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                if window.is_visible().unwrap_or(false) {
-                                    let _ = window.hide();
-                                } else {
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
-                                }
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
                             }
                         }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
                     }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .build(app)?;
 

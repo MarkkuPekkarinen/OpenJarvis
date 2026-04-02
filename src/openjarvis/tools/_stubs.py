@@ -51,6 +51,7 @@ class BaseTool(ABC):
     """
 
     tool_id: str
+    is_local: bool = True
 
     @property
     @abstractmethod
@@ -100,6 +101,7 @@ class ToolExecutor:
         default_timeout: float = 30.0,
         capability_policy: Optional[Any] = None,
         agent_id: str = "",
+        boundary_guard: Optional[Any] = None,
     ) -> None:
         self._tools: Dict[str, BaseTool] = {t.spec.name: t for t in tools}
         self._bus = bus
@@ -108,6 +110,7 @@ class ToolExecutor:
         self._default_timeout = default_timeout
         self._capability_policy = capability_policy
         self._agent_id = agent_id
+        self._boundary_guard = boundary_guard
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
         """Parse arguments, dispatch to tool, measure latency, emit events."""
@@ -129,11 +132,29 @@ class ToolExecutor:
                 success=False,
             )
 
+        # Boundary guard: scan external tool arguments
+        if (
+            self._boundary_guard is not None
+            and not getattr(tool, "is_local", True)
+        ):
+            try:
+                tool_call = self._boundary_guard.check_outbound(tool_call)
+                # Re-parse arguments after potential redaction
+                params = json.loads(tool_call.arguments) if tool_call.arguments else {}
+            except Exception as exc:
+                return ToolResult(
+                    tool_name=tool_call.name,
+                    content=f"Security block: {exc}",
+                    success=False,
+                )
+
         # RBAC capability check
         if self._capability_policy and tool.spec.required_capabilities:
             for cap in tool.spec.required_capabilities:
                 if not self._capability_policy.check(
-                    self._agent_id, cap, tool_call.name,
+                    self._agent_id,
+                    cap,
+                    tool_call.name,
                 ):
                     if self._bus:
                         self._bus.publish(
@@ -194,10 +215,7 @@ class ToolExecutor:
                     ),
                     success=False,
                 )
-            prompt = (
-                f"Allow execution of tool"
-                f" '{tool_call.name}' with args {params}?"
-            )
+            prompt = f"Allow execution of tool '{tool_call.name}' with args {params}?"
             if not self._confirm_callback(prompt):
                 return ToolResult(
                     tool_name=tool_call.name,
@@ -227,10 +245,7 @@ class ToolExecutor:
                 )
             result = ToolResult(
                 tool_name=tool_call.name,
-                content=(
-                    f"Tool '{tool_call.name}' timed out"
-                    f" after {timeout:.0f}s."
-                ),
+                content=(f"Tool '{tool_call.name}' timed out after {timeout:.0f}s."),
                 success=False,
             )
         except Exception as exc:
@@ -241,6 +256,7 @@ class ToolExecutor:
             )
         latency = time.time() - t0
         result.latency_seconds = latency
+        result.metadata["arguments"] = params
 
         # Auto-detect taints in results
         if result.success:
@@ -255,12 +271,14 @@ class ToolExecutor:
 
         # Emit end event
         if self._bus:
+            result_text = str(result.content)[:10240] if result.content else ""
             self._bus.publish(
                 EventType.TOOL_CALL_END,
                 {
                     "tool": tool_call.name,
                     "success": result.success,
                     "latency": latency,
+                    "result": result_text,
                 },
             )
 

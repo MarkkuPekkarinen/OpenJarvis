@@ -26,13 +26,18 @@ logger = logging.getLogger(__name__)
 @click.command()
 @click.option("--host", default=None, help="Bind address (default: config).")
 @click.option(
-    "--port", default=None, type=int,
+    "--port",
+    default=None,
+    type=int,
     help="Port number (default: config).",
 )
 @click.option("-e", "--engine", "engine_key", default=None, help="Engine backend.")
 @click.option("-m", "--model", "model_name", default=None, help="Default model.")
 @click.option(
-    "-a", "--agent", "agent_name", default=None,
+    "-a",
+    "--agent",
+    "agent_name",
+    default=None,
     help="Agent for non-streaming requests (simple, orchestrator, react, openhands).",
 )
 def serve(
@@ -94,12 +99,14 @@ def serve(
 
     # Apply security guardrails
     from openjarvis.security import setup_security
+
     sec = setup_security(config, engine, bus)
     engine = sec.engine
 
     # If cloud API keys are set, wrap with MultiEngine so both local
     # and cloud models appear in the model list and can be used.
     import os
+
     _has_cloud = (
         os.environ.get("OPENAI_API_KEY")
         or os.environ.get("ANTHROPIC_API_KEY")
@@ -113,10 +120,15 @@ def serve(
             from openjarvis.engine.multi import MultiEngine
 
             cloud = CloudEngine()
+            engine = MultiEngine([(engine_name, engine), ("cloud", cloud)])
+            engine_name = "multi"
             if cloud.health():
-                engine = MultiEngine([(engine_name, engine), ("cloud", cloud)])
-                engine_name = "multi"
                 console.print("  Cloud:  [cyan]enabled[/cyan] (API keys detected)")
+            else:
+                console.print(
+                    "  Cloud:  [yellow]keys set but packages missing[/yellow] "
+                    "(run: uv sync --extra inference-cloud --extra inference-google)"
+                )
         except Exception as exc:
             logger.debug("Cloud engine init failed: %s", exc)
 
@@ -181,10 +193,16 @@ def serve(
                     _DEFAULT_TOOLS = {"think", "calculator", "web_search"}
                     configured = config.agent.tools
                     if configured:
-                        allowed = {
-                            t.strip() for t in configured.split(",")
-                            if t.strip()
-                        }
+                        if isinstance(configured, list):
+                            allowed = {
+                                t.strip()
+                                for t in configured
+                                if isinstance(t, str) and t.strip()
+                            }
+                        else:
+                            allowed = {
+                                t.strip() for t in configured.split(",") if t.strip()
+                            }
                     else:
                         allowed = _DEFAULT_TOOLS
 
@@ -208,6 +226,7 @@ def serve(
                 agent = agent_cls(engine, model_name, **agent_kwargs)
         except Exception as exc:
             import traceback
+
             console.print(f"[yellow]Agent '{agent_key}' failed to load: {exc}[/yellow]")
             traceback.print_exc()
 
@@ -230,10 +249,70 @@ def serve(
             console.print(f"[yellow]Channel failed to start: {exc}[/yellow]")
             channel_bridge = None
 
+    # Wire channel messages → agent / engine (per-chat session isolation)
+    if channel_bridge is not None:
+        from openjarvis.system import JarvisSystem
+
+        channel_agent = config.channel.default_agent or agent_key or "simple"
+
+        _channel_tools: list = []
+        if channel_agent:
+            try:
+                import openjarvis.agents
+                from openjarvis.core.registry import AgentRegistry
+
+                if AgentRegistry.contains(channel_agent):
+                    _ch_cls = AgentRegistry.get(channel_agent)
+                    if getattr(_ch_cls, "accepts_tools", False):
+                        import openjarvis.tools
+                        from openjarvis.core.registry import ToolRegistry
+                        from openjarvis.tools._stubs import BaseTool
+
+                        _DEFAULT_TOOLS = {"think", "calculator", "web_search"}
+                        configured = config.agent.tools
+                        if configured:
+                            if isinstance(configured, list):
+                                _allowed = {
+                                    t.strip()
+                                    for t in configured
+                                    if isinstance(t, str) and t.strip()
+                                }
+                            else:
+                                _allowed = {
+                                    t.strip()
+                                    for t in configured.split(",")
+                                    if t.strip()
+                                }
+                        else:
+                            _allowed = _DEFAULT_TOOLS
+
+                        for _tname in ToolRegistry.keys():
+                            if _tname not in _allowed:
+                                continue
+                            _tcls = ToolRegistry.get(_tname)
+                            if isinstance(_tcls, type) and issubclass(_tcls, BaseTool):
+                                _channel_tools.append(_tcls())
+                            elif isinstance(_tcls, BaseTool):
+                                _channel_tools.append(_tcls)
+            except Exception as exc:
+                logger.warning("Channel tools failed to load: %s", exc)
+
+        _wire_system = JarvisSystem(
+            config=config,
+            bus=bus,
+            engine=engine,
+            engine_key=engine_name,
+            model=model_name,
+            agent_name=channel_agent,
+            tools=_channel_tools,
+        )
+        _wire_system.wire_channel(channel_bridge)
+
     # Set up speech backend
     speech_backend = None
     try:
         from openjarvis.speech._discovery import get_speech_backend
+
         speech_backend = get_speech_backend(config)
         if speech_backend:
             console.print(f"  Speech: [cyan]{speech_backend.backend_id}[/cyan]")
@@ -267,6 +346,7 @@ def serve(
 
             executor = AgentExecutor(manager=agent_manager, event_bus=bus)
             from openjarvis.system import SystemBuilder
+
             system = SystemBuilder(config).build()
             executor.set_system(system)
 
@@ -278,7 +358,8 @@ def serve(
             for ag in agent_manager.list_agents():
                 sched_type = ag.get("config", {}).get("schedule_type", "manual")
                 if sched_type in ("cron", "interval") and ag["status"] not in (
-                    "archived", "error",
+                    "archived",
+                    "error",
                 ):
                     agent_scheduler.register_agent(ag["id"])
             agent_scheduler.start()
@@ -286,13 +367,102 @@ def serve(
         except Exception as exc:
             logger.debug("Agent scheduler init failed: %s", exc)
 
+    # Set up memory backend for context injection
+    memory_backend = None
+    if config.agent.context_from_memory:
+        try:
+            import openjarvis.tools.storage  # noqa: F401
+            from openjarvis.core.registry import MemoryRegistry
+
+            mem_key = config.memory.default_backend
+            if MemoryRegistry.contains(mem_key):
+                memory_backend = MemoryRegistry.create(
+                    mem_key,
+                    db_path=config.memory.db_path,
+                )
+                console.print("  Memory:    [cyan]active[/cyan]")
+        except Exception as exc:
+            logger.debug("Memory backend init failed: %s", exc)
+
+    # --- Channel Gateway: API key, sessions, ChannelBridge ---
+    import os as _os
+
+    api_key = _os.environ.get("OPENJARVIS_API_KEY", "")
+    if not api_key:
+        try:
+            import tomllib
+
+            _cfg_path = str(
+                __import__("pathlib").Path.home() / ".openjarvis" / "config.toml"
+            )
+            with open(_cfg_path, "rb") as _f:
+                _raw = tomllib.load(_f)
+            api_key = _raw.get("server", {}).get("auth", {}).get("api_key", "")
+        except (FileNotFoundError, ImportError):
+            pass
+
+    from openjarvis.server.auth_middleware import check_bind_safety
+
+    check_bind_safety(bind_host, api_key=api_key)
+
+    # Log credential status at startup
+    from openjarvis.core.credentials import TOOL_CREDENTIALS, get_credential_status
+
+    _cred_parts = []
+    for _tool_name in sorted(TOOL_CREDENTIALS):
+        _status = get_credential_status(_tool_name)
+        _set = sum(1 for v in _status.values() if v)
+        _total = len(_status)
+        if _set > 0:
+            _cred_parts.append(f"{_tool_name}: {_set}/{_total} keys")
+    if _cred_parts:
+        logger.info("Credentials loaded — %s", ", ".join(_cred_parts))
+
+    webhook_config = {
+        "twilio_auth_token": _os.environ.get("TWILIO_AUTH_TOKEN", ""),
+        "bluebubbles_password": _os.environ.get("BLUEBUBBLES_PASSWORD", ""),
+        "whatsapp_verify_token": _os.environ.get("WHATSAPP_VERIFY_TOKEN", ""),
+        "whatsapp_app_secret": _os.environ.get("WHATSAPP_APP_SECRET", ""),
+    }
+
+    # Wrap existing channel in ChannelBridge orchestrator
+    if channel_bridge is not None:
+        try:
+            from openjarvis.server.channel_bridge import (
+                ChannelBridge,
+            )
+            from openjarvis.server.session_store import (
+                SessionStore,
+            )
+
+            session_store = SessionStore()
+            channels = {channel_bridge.channel_id: channel_bridge}
+            channel_bridge = ChannelBridge(
+                channels=channels,
+                session_store=session_store,
+                bus=bus,
+                system=None,
+                agent_manager=agent_manager,
+            )
+        except Exception as exc:
+            logger.debug("ChannelBridge init skipped: %s", exc)
+
     app = create_app(
-        engine, model_name, agent=agent, bus=bus,
-        engine_name=engine_name, agent_name=agent_key or "",
-        channel_bridge=channel_bridge, config=config,
+        engine,
+        model_name,
+        agent=agent,
+        bus=bus,
+        engine_name=engine_name,
+        agent_name=agent_key or "",
+        channel_bridge=channel_bridge,
+        config=config,
+        memory_backend=memory_backend,
         speech_backend=speech_backend,
         agent_manager=agent_manager,
         agent_scheduler=agent_scheduler,
+        api_key=api_key,
+        webhook_config=webhook_config,
+        cors_origins=config.server.cors_origins,
     )
 
     console.print(
@@ -303,5 +473,21 @@ def serve(
         f"  URL:    [cyan]http://{bind_host}:{bind_port}[/cyan]"
     )
 
+    # Warn about wildcard CORS on non-loopback
+    import ipaddress as _ipa
+
+    try:
+        _is_loop = _ipa.ip_address(bind_host).is_loopback
+    except ValueError:
+        _is_loop = bind_host in ("localhost", "")
+
+    if not _is_loop and "*" in config.server.cors_origins:
+        console.print(
+            "[yellow bold]WARNING:[/yellow bold] Wildcard CORS with credentials "
+            "enabled on non-loopback interface. This allows any website to make "
+            "authenticated requests to your instance."
+        )
+
     import uvicorn
+
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")

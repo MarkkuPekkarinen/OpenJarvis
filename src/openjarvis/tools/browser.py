@@ -25,8 +25,7 @@ class _BrowserSession:
             from playwright.sync_api import sync_playwright
         except ImportError:
             raise ImportError(
-                "playwright not installed. Install with: "
-                "uv sync --extra browser"
+                "playwright not installed. Install with: uv sync --extra browser"
             )
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=True)
@@ -58,6 +57,7 @@ class BrowserNavigateTool(BaseTool):
     """Navigate to a URL in the browser."""
 
     tool_id = "browser_navigate"
+    is_local = False
 
     @property
     def spec(self) -> ToolSpec:
@@ -134,8 +134,7 @@ class BrowserNavigateTool(BaseTool):
             return ToolResult(
                 tool_name="browser_navigate",
                 content=(
-                    "playwright not installed. Install with: "
-                    "uv sync --extra browser"
+                    "playwright not installed. Install with: uv sync --extra browser"
                 ),
                 success=False,
             )
@@ -157,6 +156,7 @@ class BrowserClickTool(BaseTool):
     """Click an element on the page."""
 
     tool_id = "browser_click"
+    is_local = False
 
     @property
     def spec(self) -> ToolSpec:
@@ -214,8 +214,7 @@ class BrowserClickTool(BaseTool):
             return ToolResult(
                 tool_name="browser_click",
                 content=(
-                    "playwright not installed. Install with: "
-                    "uv sync --extra browser"
+                    "playwright not installed. Install with: uv sync --extra browser"
                 ),
                 success=False,
             )
@@ -237,6 +236,7 @@ class BrowserTypeTool(BaseTool):
     """Type text into a form field."""
 
     tool_id = "browser_type"
+    is_local = False
 
     @property
     def spec(self) -> ToolSpec:
@@ -260,8 +260,7 @@ class BrowserTypeTool(BaseTool):
                     "clear": {
                         "type": "boolean",
                         "description": (
-                            "If true, clear the field before typing."
-                            " Default: true."
+                            "If true, clear the field before typing. Default: true."
                         ),
                     },
                 },
@@ -306,8 +305,7 @@ class BrowserTypeTool(BaseTool):
             return ToolResult(
                 tool_name="browser_type",
                 content=(
-                    "playwright not installed. Install with: "
-                    "uv sync --extra browser"
+                    "playwright not installed. Install with: uv sync --extra browser"
                 ),
                 success=False,
             )
@@ -329,6 +327,7 @@ class BrowserScreenshotTool(BaseTool):
     """Take a screenshot of the current page."""
 
     tool_id = "browser_screenshot"
+    is_local = False
 
     @property
     def spec(self) -> ToolSpec:
@@ -348,8 +347,7 @@ class BrowserScreenshotTool(BaseTool):
                     "full_page": {
                         "type": "boolean",
                         "description": (
-                            "If true, capture the full scrollable page."
-                            " Default: false."
+                            "If true, capture the full scrollable page. Default: false."
                         ),
                     },
                 },
@@ -387,8 +385,7 @@ class BrowserScreenshotTool(BaseTool):
             return ToolResult(
                 tool_name="browser_screenshot",
                 content=(
-                    "playwright not installed. Install with: "
-                    "uv sync --extra browser"
+                    "playwright not installed. Install with: uv sync --extra browser"
                 ),
                 success=False,
             )
@@ -410,6 +407,7 @@ class BrowserExtractTool(BaseTool):
     """Extract content from the current page."""
 
     tool_id = "browser_extract"
+    is_local = False
 
     @property
     def spec(self) -> ToolSpec:
@@ -425,8 +423,7 @@ class BrowserExtractTool(BaseTool):
                     "selector": {
                         "type": "string",
                         "description": (
-                            "CSS selector to extract from."
-                            " Default: 'body'."
+                            "CSS selector to extract from. Default: 'body'."
                         ),
                     },
                     "extract_type": {
@@ -522,8 +519,7 @@ class BrowserExtractTool(BaseTool):
             return ToolResult(
                 tool_name="browser_extract",
                 content=(
-                    "playwright not installed. Install with: "
-                    "uv sync --extra browser"
+                    "playwright not installed. Install with: uv sync --extra browser"
                 ),
                 success=False,
             )

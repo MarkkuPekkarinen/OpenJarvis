@@ -31,7 +31,7 @@ export async function initApiBase(): Promise<void> {
   }
 }
 
-const DESKTOP_API_FALLBACK = 'http://127.0.0.1:8222';
+const DESKTOP_API_FALLBACK = 'http://127.0.0.1:8000';
 
 const getSettingsApiUrl = (): string => {
   try {
@@ -98,6 +98,12 @@ export async function fetchModels(): Promise<ModelInfo[]> {
   if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
   const data = await res.json();
   return data.data || [];
+}
+
+export async function fetchRecommendedModel(): Promise<{ model: string; reason: string }> {
+  const res = await fetch(`${getBase()}/v1/recommended-model`);
+  if (!res.ok) return { model: '', reason: 'Failed to fetch' };
+  return res.json();
 }
 
 export async function pullModel(modelName: string): Promise<void> {
@@ -296,6 +302,8 @@ export interface ManagedAgent {
   total_runs?: number;
   total_cost?: number;
   total_tokens?: number;
+  input_tokens?: number;
+  output_tokens?: number;
   last_run_at?: number | null;
   // Schedule
   schedule_type?: string;
@@ -304,6 +312,8 @@ export interface ManagedAgent {
   budget?: number;
   // Learning
   learning_enabled?: boolean;
+  // Live progress
+  current_activity?: string;
 }
 
 export interface AgentTask {
@@ -424,6 +434,106 @@ export async function fetchAgentChannels(agentId: string): Promise<ChannelBindin
   return data.bindings || [];
 }
 
+export async function bindAgentChannel(
+  agentId: string,
+  channelType: string,
+  config?: Record<string, unknown>,
+): Promise<ChannelBinding> {
+  const res = await fetch(
+    `${getBase()}/v1/managed-agents/${agentId}/channels`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel_type: channelType,
+        config: config || {},
+        routing_mode: 'dedicated',
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  return res.json();
+}
+
+export async function unbindAgentChannel(
+  agentId: string,
+  bindingId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${getBase()}/v1/managed-agents/${agentId}/channels/${bindingId}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok) throw new Error(`Failed: ${res.status}`);
+}
+
+// -- SendBlue auto-setup helpers ------------------------------------------
+
+export async function sendblueVerify(
+  apiKeyId: string,
+  apiSecretKey: string,
+): Promise<{ valid: boolean; numbers: string[]; raw: unknown }> {
+  const res = await fetch(`${getBase()}/v1/channels/sendblue/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key_id: apiKeyId, api_secret_key: apiSecretKey }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Verification failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function sendblueRegisterWebhook(
+  apiKeyId: string,
+  apiSecretKey: string,
+  webhookUrl: string,
+): Promise<{ registered: boolean; status: number }> {
+  const res = await fetch(`${getBase()}/v1/channels/sendblue/register-webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key_id: apiKeyId,
+      api_secret_key: apiSecretKey,
+      webhook_url: webhookUrl,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Webhook registration failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function sendblueTest(
+  apiKeyId: string,
+  apiSecretKey: string,
+  fromNumber: string,
+  toNumber: string,
+): Promise<{ sent: boolean; status: number }> {
+  const res = await fetch(`${getBase()}/v1/channels/sendblue/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key_id: apiKeyId,
+      api_secret_key: apiSecretKey,
+      from_number: fromNumber,
+      to_number: toNumber,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Test message failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function sendblueHealth(): Promise<{ channel_connected: boolean; bridge_wired: boolean; ready: boolean }> {
+  const res = await fetch(`${getBase()}/v1/channels/sendblue/health`);
+  if (!res.ok) return { channel_connected: false, bridge_wired: false, ready: false };
+  return res.json();
+}
+
 export async function fetchTemplates(): Promise<AgentTemplate[]> {
   const res = await fetch(`${getBase()}/v1/templates`);
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
@@ -460,13 +570,74 @@ export async function fetchAgentState(agentId: string): Promise<{
   return res.json();
 }
 
-export async function sendAgentMessage(agentId: string, content: string, mode: 'immediate' | 'queued' = 'queued'): Promise<AgentMessage> {
+export async function sendAgentMessage(
+  agentId: string,
+  content: string,
+  mode: 'immediate' | 'queued' = 'queued',
+  callbacks?: {
+    onProgress?: (label: string) => void;
+    onContentDelta?: (delta: string, fullContent: string) => void;
+    onDone?: (fullContent: string, usage?: Record<string, number>, telemetry?: Record<string, unknown>) => void;
+  },
+): Promise<AgentMessage> {
   const res = await fetch(`${getBase()}/v1/managed-agents/${agentId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, mode }),
+    body: JSON.stringify({ content, mode, stream: true }),
   });
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
+
+  // If streaming, consume the SSE response so the agent runs
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('text/event-stream') && res.body) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+    let buffer = '';
+    let lastUsage: Record<string, number> | undefined;
+    let lastTelemetry: Record<string, unknown> | undefined;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+          try {
+            const chunk = JSON.parse(line.slice(6));
+            // Check for tool progress events
+            const toolProgress = chunk.choices?.[0]?.tool_progress;
+            if (toolProgress) {
+              callbacks?.onProgress?.(toolProgress);
+            }
+            const delta = chunk.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              fullContent += delta;
+              callbacks?.onContentDelta?.(delta, fullContent);
+            }
+            // Capture usage + telemetry from final chunk
+            if (chunk.usage) lastUsage = chunk.usage;
+            if (chunk.telemetry) lastTelemetry = chunk.telemetry;
+          } catch { /* skip malformed chunks */ }
+        }
+      }
+    } catch { /* stream ended */ }
+
+    callbacks?.onDone?.(fullContent, lastUsage, lastTelemetry);
+
+    return {
+      id: '',
+      agent_id: agentId,
+      direction: 'agent_to_user',
+      content: fullContent,
+      mode,
+      status: 'delivered',
+      created_at: Date.now() / 1000,
+    };
+  }
+
   return res.json();
 }
 
@@ -589,6 +760,7 @@ export interface SavingsSubmission {
   dollar_savings: number;
   energy_wh_saved: number;
   flops_saved: number;
+  token_counting_version?: number;
 }
 
 export async function submitSavings(data: SavingsSubmission): Promise<boolean> {

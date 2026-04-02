@@ -24,6 +24,26 @@ def _get_manager():
     return AgentManager(db_path=db_path)
 
 
+def _resolve_agent_id(manager, agent_id_or_name: str) -> str:
+    """Resolve an agent name or ID to the actual agent ID.
+
+    Accepts either the hex ID or the agent name.  Raises SystemExit if
+    no matching agent is found.
+    """
+    # Try direct ID lookup first
+    agent = manager.get_agent(agent_id_or_name)
+    if agent is not None:
+        return agent["id"]
+
+    # Fall back to name lookup
+    for a in manager.list_agents(include_archived=True):
+        if a["name"] == agent_id_or_name:
+            return a["id"]
+
+    click.echo(f"Agent not found: {agent_id_or_name}", err=True)
+    raise SystemExit(1)
+
+
 @click.group("agents")
 def agent() -> None:
     """Manage persistent agents — create, inspect, chat, bind channels."""
@@ -52,13 +72,19 @@ def list_agents() -> None:
             tasks = mgr.list_tasks(a["id"])
             bindings = mgr.list_channel_bindings(a["id"])
             status_style = {
-                "idle": "dim", "running": "green", "paused": "yellow",
-                "error": "red", "archived": "dim strike",
+                "idle": "dim",
+                "running": "green",
+                "paused": "yellow",
+                "error": "red",
+                "archived": "dim strike",
             }.get(a["status"], "")
             table.add_row(
-                a["id"], a["name"], a["agent_type"],
+                a["id"],
+                a["name"],
+                a["agent_type"],
                 f"[{status_style}]{a['status']}[/{status_style}]",
-                str(len(tasks)), str(len(bindings)),
+                str(len(tasks)),
+                str(len(bindings)),
             )
         console.print(table)
     except Exception as exc:
@@ -283,8 +309,10 @@ def templates() -> None:
         table.add_column("Description", style="white")
         for t in tpls:
             table.add_row(
-                t.get("id", ""), t.get("name", ""),
-                t.get("source", ""), t.get("description", "")[:60],
+                t.get("id", ""),
+                t.get("name", ""),
+                t.get("source", ""),
+                t.get("description", "")[:60],
             )
         console.print(table)
     except Exception as exc:
@@ -294,6 +322,7 @@ def templates() -> None:
 def _get_system():
     """Build a JarvisSystem for CLI commands that need scheduler/executor."""
     from openjarvis.system import SystemBuilder
+
     try:
         return SystemBuilder().build()
     except RuntimeError as exc:
@@ -312,6 +341,7 @@ def _get_scheduler_and_executor(system=None):
 def launch():
     """Interactive agent launcher."""
     from openjarvis.agents.manager import AgentManager as _AM
+
     templates = _AM.list_templates()
     click.echo("Available templates:")
     for i, t in enumerate(templates, 1):
@@ -343,7 +373,8 @@ def launch():
     manager = _get_manager()
     if template:
         agent_data = manager.create_from_template(
-            template["id"], name=name,
+            template["id"],
+            name=name,
         )
         agent_config = agent_data.get("config", {})
         agent_config.update(config)
@@ -354,7 +385,7 @@ def launch():
         agent_data = manager.create_agent(
             name=name, agent_type=agent_type, config=config
         )
-    click.echo(f"\nAgent \"{agent_data['name']}\" created (ID: {agent_data['id']})")
+    click.echo(f'\nAgent "{agent_data["name"]}" created (ID: {agent_data["id"]})')
 
 
 @agent.command("start")
@@ -371,7 +402,7 @@ def start_agent(agent_id):
         click.echo("Scheduler not available", err=True)
         raise SystemExit(1)
     scheduler.register_agent(agent_id)
-    click.echo(f"Agent \"{agent_data['name']}\" registered with scheduler")
+    click.echo(f'Agent "{agent_data["name"]}" registered with scheduler')
 
 
 @agent.command("stop")
@@ -388,7 +419,7 @@ def stop_agent(agent_id):
         click.echo("Scheduler not available", err=True)
         raise SystemExit(1)
     scheduler.deregister_agent(agent_id)
-    click.echo(f"Agent \"{agent_data['name']}\" deregistered from scheduler")
+    click.echo(f'Agent "{agent_data["name"]}" deregistered from scheduler')
 
 
 @agent.command("run")
@@ -403,7 +434,7 @@ def run_agent(agent_id):
     if agent_data["status"] == "archived":
         click.echo(f"Agent {agent_id} is archived and cannot be run", err=True)
         raise SystemExit(1)
-    click.echo(f"Running tick for \"{agent_data['name']}\"...")
+    click.echo(f'Running tick for "{agent_data["name"]}"...')
     _, executor, _ = _get_scheduler_and_executor()
     if executor is None:
         click.echo("Executor not available", err=True)
@@ -445,9 +476,7 @@ def status():
         max_cost = cfg.get("max_cost", 0)
         if max_cost > 0:
             pct = min(100, int(a.get("total_cost", 0) / max_cost * 100))
-            budget = (
-                f"${a.get('total_cost', 0):.2f}/{max_cost:.0f} ({pct}%)"
-            )
+            budget = f"${a.get('total_cost', 0):.2f}/{max_cost:.0f} ({pct}%)"
         else:
             budget = f"${a.get('total_cost', 0):.2f}"
         # Last seen column
@@ -471,9 +500,7 @@ def status():
 
 @agent.command("learning")
 @click.argument("agent_id")
-@click.option(
-    "--run", "trigger_run", is_flag=True, help="Trigger manual learning run"
-)
+@click.option("--run", "trigger_run", is_flag=True, help="Trigger manual learning run")
 def learning(agent_id, trigger_run):
     """Show learning history or trigger a manual run."""
     import datetime
@@ -485,35 +512,35 @@ def learning(agent_id, trigger_run):
         raise SystemExit(1)
 
     if trigger_run:
-        click.echo(f"Triggering learning for \"{agent_data['name']}\"...")
+        click.echo(f'Triggering learning for "{agent_data["name"]}"...')
         from openjarvis.core.events import EventType, get_event_bus
 
         bus = get_event_bus()
-        bus.publish(
-            EventType.AGENT_LEARNING_STARTED, {"agent_id": agent_id}
-        )
+        bus.publish(EventType.AGENT_LEARNING_STARTED, {"agent_id": agent_id})
         click.echo("Learning triggered.")
         return
 
     logs = manager.list_learning_log(agent_id)
     if not logs:
-        click.echo(f"No learning history for \"{agent_data['name']}\"")
+        click.echo(f'No learning history for "{agent_data["name"]}"')
         return
-    click.echo(f"Learning history for \"{agent_data['name']}\":")
+    click.echo(f'Learning history for "{agent_data["name"]}":')
     for entry in logs:
-        ts = datetime.datetime.fromtimestamp(
-            entry["created_at"]
-        ).strftime("%Y-%m-%d %H:%M")
+        ts = datetime.datetime.fromtimestamp(entry["created_at"]).strftime(
+            "%Y-%m-%d %H:%M"
+        )
         click.echo(
-            f"  {ts}  [{entry['event_type']}] "
-            f"{entry.get('description', '')[:60]}"
+            f"  {ts}  [{entry['event_type']}] {entry.get('description', '')[:60]}"
         )
 
 
 @agent.command("trace")
 @click.argument("agent_id")
 @click.option(
-    "--run", "run_number", default=None, type=int,
+    "--run",
+    "run_number",
+    default=None,
+    type=int,
     help="Specific run number",
 )
 @click.option("--limit", "-n", default=10, help="Number of traces to show")
@@ -531,36 +558,32 @@ def trace(agent_id, run_number, limit):
         raise SystemExit(1)
 
     config = load_config()
-    store = TraceStore(
-        config.traces.db_path or "~/.openjarvis/traces.db"
-    )
+    store = TraceStore(config.traces.db_path or "~/.openjarvis/traces.db")
     traces = store.list_traces(agent=agent_id, limit=limit)
 
     if not traces:
-        click.echo(f"No traces for \"{agent_data['name']}\"")
+        click.echo(f'No traces for "{agent_data["name"]}"')
         return
 
     if run_number is not None and 1 <= run_number <= len(traces):
         t = traces[run_number - 1]
         click.echo(
-            f"Trace #{run_number} — {t.outcome} "
-            f"({t.total_latency_seconds:.1f}s)"
+            f"Trace #{run_number} — {t.outcome} ({t.total_latency_seconds:.1f}s)"
         )
         for i, step in enumerate(t.steps, 1):
             click.echo(
-                f"  Step {i}: [{step.step_type.value}] "
-                f"{step.duration_seconds:.2f}s"
+                f"  Step {i}: [{step.step_type.value}] {step.duration_seconds:.2f}s"
             )
             inp = str(step.input)[:80]
             out = str(step.output)[:80]
             click.echo(f"    In:  {inp}")
             click.echo(f"    Out: {out}")
     else:
-        click.echo(f"Traces for \"{agent_data['name']}\":")
+        click.echo(f'Traces for "{agent_data["name"]}":')
         for i, t in enumerate(traces, 1):
-            ts = datetime.datetime.fromtimestamp(
-                t.started_at
-            ).strftime("%Y-%m-%d %H:%M")
+            ts = datetime.datetime.fromtimestamp(t.started_at).strftime(
+                "%Y-%m-%d %H:%M"
+            )
             click.echo(
                 f"  #{i}  {ts}  {t.outcome}  "
                 f"{t.total_latency_seconds:.1f}s  "
@@ -582,9 +605,9 @@ def logs(agent_id, limit):
         raise SystemExit(1)
     checkpoints = manager.list_checkpoints(agent_id)
     if not checkpoints:
-        click.echo(f"No execution history for \"{agent_data['name']}\"")
+        click.echo(f'No execution history for "{agent_data["name"]}"')
         return
-    click.echo(f"Recent runs for \"{agent_data['name']}\":")
+    click.echo(f'Recent runs for "{agent_data["name"]}":')
     for cp in checkpoints[:limit]:
         ts = datetime.datetime.fromtimestamp(cp["created_at"]).strftime(
             "%Y-%m-%d %H:%M"
@@ -631,8 +654,10 @@ def watch(agent_id):
     click.echo("Watching agent events... (press Ctrl+C to stop)")
     bus = get_event_bus()
     agent_events = [
-        EventType.AGENT_TICK_START, EventType.AGENT_TICK_END,
-        EventType.AGENT_TICK_ERROR, EventType.AGENT_BUDGET_EXCEEDED,
+        EventType.AGENT_TICK_START,
+        EventType.AGENT_TICK_END,
+        EventType.AGENT_TICK_ERROR,
+        EventType.AGENT_BUDGET_EXCEEDED,
     ]
 
     def _on_event(event):
@@ -680,6 +705,7 @@ def errors():
 def ask(agent_id, message):
     """Ask an agent a question (immediate response)."""
     manager = _get_manager()
+    agent_id = _resolve_agent_id(manager, agent_id)
     manager.send_message(agent_id, message, mode="immediate")
     click.echo("Asking agent...")
     _, executor, _ = _get_scheduler_and_executor()
@@ -701,6 +727,7 @@ def ask(agent_id, message):
 def instruct(agent_id, message):
     """Queue an instruction for the agent's next tick."""
     manager = _get_manager()
+    agent_id = _resolve_agent_id(manager, agent_id)
     msg = manager.send_message(agent_id, message, mode="queued")
     click.echo(f"Instruction queued (ID: {msg['id'][:8]})")
 

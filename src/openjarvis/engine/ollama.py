@@ -15,6 +15,7 @@ from openjarvis.core.types import Message
 from openjarvis.engine._base import (
     EngineConnectionError,
     InferenceEngine,
+    estimate_prompt_tokens,
     messages_to_dicts,
 )
 
@@ -74,6 +75,13 @@ class OllamaEngine(InferenceEngine):
                 "num_ctx": kwargs.get("num_ctx", 8192),
             },
         }
+        # Disable extended thinking by default (Qwen3.5 etc.).
+        # When enabled, thinking tokens consume the entire budget and
+        # the visible content comes back empty.
+        if "think" not in kwargs:
+            payload["think"] = False
+        elif kwargs["think"] is not None:
+            payload["think"] = kwargs["think"]
         # Pass tools if provided
         tools = kwargs.get("tools")
         if tools:
@@ -105,13 +113,24 @@ class OllamaEngine(InferenceEngine):
                 f"Ollama returned {exc.response.status_code}: {body}"
             ) from exc
         data = resp.json()
-        prompt_tokens = data.get("prompt_eval_count", 0)
+        # prompt_eval_count = tokens actually evaluated (KV-cache-aware).
+        # estimate_prompt_tokens = full prompt size (for cost comparison).
+        # We report both so downstream can use the right one:
+        #   prompt_tokens        → full size (what cloud would charge)
+        #   prompt_tokens_evaluated → actual compute (with KV cache)
+        reported_prompt = data.get("prompt_eval_count", 0)
+        estimated_prompt = estimate_prompt_tokens(messages)
+        prompt_tokens = max(reported_prompt, estimated_prompt)
+        prompt_tokens_evaluated = (
+            reported_prompt if reported_prompt > 0 else prompt_tokens
+        )
         completion_tokens = data.get("eval_count", 0)
         content = data.get("message", {}).get("content", "")
         result: Dict[str, Any] = {
             "content": content,
             "usage": {
                 "prompt_tokens": prompt_tokens,
+                "prompt_tokens_evaluated": prompt_tokens_evaluated,
                 "completion_tokens": completion_tokens,
                 "total_tokens": prompt_tokens + completion_tokens,
             },
@@ -120,26 +139,36 @@ class OllamaEngine(InferenceEngine):
         }
         # Extract timing from Ollama response (nanoseconds → seconds)
         result["ttft"] = data.get("prompt_eval_duration", 0) / 1e9
-        result["engine_timing"] = {k: data[k] for k in
-            ("total_duration", "load_duration", "prompt_eval_duration", "eval_duration")
-            if k in data}
+        result["engine_timing"] = {
+            k: data[k]
+            for k in (
+                "total_duration",
+                "load_duration",
+                "prompt_eval_duration",
+                "eval_duration",
+            )
+            if k in data
+        }
         # Extract tool calls if present
         raw_tool_calls = data.get("message", {}).get("tool_calls", [])
         if raw_tool_calls:
             tool_calls = []
             for i, tc in enumerate(raw_tool_calls):
                 raw_args = tc.get("function", {}).get(
-                    "arguments", "{}",
+                    "arguments",
+                    "{}",
                 )
-                tool_calls.append({
-                    "id": tc.get("id", f"call_{i}"),
-                    "name": tc.get("function", {}).get("name", ""),
-                    "arguments": (
-                        json.dumps(raw_args)
-                        if isinstance(raw_args, dict)
-                        else raw_args
-                    ),
-                })
+                tool_calls.append(
+                    {
+                        "id": tc.get("id", f"call_{i}"),
+                        "name": tc.get("function", {}).get("name", ""),
+                        "arguments": (
+                            json.dumps(raw_args)
+                            if isinstance(raw_args, dict)
+                            else raw_args
+                        ),
+                    }
+                )
             result["tool_calls"] = tool_calls
         return result
 
@@ -176,14 +205,18 @@ class OllamaEngine(InferenceEngine):
                     if content:
                         yield content
                     if chunk.get("done", False):
-                        # Capture usage from final chunk
+                        reported_prompt = chunk.get("prompt_eval_count", 0)
+                        est_prompt = estimate_prompt_tokens(messages)
+                        full_prompt = max(reported_prompt, est_prompt)
+                        evaluated = (
+                            reported_prompt if reported_prompt > 0 else full_prompt
+                        )
+                        comp = chunk.get("eval_count", 0)
                         self._last_stream_usage = {
-                            "prompt_tokens": chunk.get("prompt_eval_count", 0),
-                            "completion_tokens": chunk.get("eval_count", 0),
-                            "total_tokens": (
-                                chunk.get("prompt_eval_count", 0)
-                                + chunk.get("eval_count", 0)
-                            ),
+                            "prompt_tokens": full_prompt,
+                            "prompt_tokens_evaluated": evaluated,
+                            "completion_tokens": comp,
+                            "total_tokens": full_prompt + comp,
                         }
                         break
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
@@ -196,11 +229,14 @@ class OllamaEngine(InferenceEngine):
             resp = self._client.get("/api/tags")
             resp.raise_for_status()
         except (
-            httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError,
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            httpx.HTTPStatusError,
         ) as exc:
             logger.warning(
                 "Failed to list models from Ollama at %s: %s",
-                self._host, exc,
+                self._host,
+                exc,
             )
             return []
         data = resp.json()

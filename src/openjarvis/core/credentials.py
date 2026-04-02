@@ -3,6 +3,7 @@
 Stores credentials in ~/.openjarvis/credentials.toml with 0o600 permissions.
 Thread-safe writes via lock. Sets os.environ on save for immediate effect.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,8 +34,10 @@ TOOL_CREDENTIALS: dict[str, list[str]] = {
     "viber": ["VIBER_AUTH_TOKEN"],
     "messenger": ["MESSENGER_PAGE_ACCESS_TOKEN", "MESSENGER_VERIFY_TOKEN"],
     "reddit": [
-        "REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET",
-        "REDDIT_USERNAME", "REDDIT_PASSWORD",
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET",
+        "REDDIT_USERNAME",
+        "REDDIT_PASSWORD",
     ],
     "mastodon": ["MASTODON_ACCESS_TOKEN", "MASTODON_API_BASE_URL"],
     "twitch": ["TWITCH_TOKEN", "TWITCH_CHANNEL"],
@@ -105,3 +108,22 @@ def inject_credentials(path: Path | None = None) -> None:
         for k, v in kvs.items():
             if k not in os.environ:
                 os.environ[k] = v
+
+
+def get_tool_credential(
+    tool_name: str,
+    key: str,
+    *,
+    path: Path | None = None,
+) -> str | None:
+    """Read a single credential without polluting ``os.environ``.
+
+    Falls back to ``os.environ`` if the key is not in credentials.toml,
+    for backward compatibility with Docker env var workflows.
+    """
+    creds = load_credentials(path=path)
+    tool_creds = creds.get(tool_name, {})
+    value = tool_creds.get(key)
+    if value is not None:
+        return value
+    return os.environ.get(key) or None

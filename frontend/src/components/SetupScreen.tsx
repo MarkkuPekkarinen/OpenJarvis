@@ -70,12 +70,11 @@ function StepRow({
 
 export function SetupScreen({ onReady }: { onReady: () => void }) {
   const [status, setStatus] = useState<SetupStatus | null>(null);
-
   const poll = useCallback(async () => {
     const s = await getSetupStatus();
     if (s) setStatus(s);
     if (s?.phase === 'ready') {
-      setTimeout(onReady, 600);
+      setTimeout(() => onReady(), 600);
     }
   }, [onReady]);
 

@@ -51,11 +51,13 @@ def load_skill(
 
     steps = []
     for step_data in skill_data.get("steps", []):
-        steps.append(SkillStep(
-            tool_name=step_data["tool_name"],
-            arguments_template=step_data.get("arguments_template", "{}"),
-            output_key=step_data.get("output_key", ""),
-        ))
+        steps.append(
+            SkillStep(
+                tool_name=step_data["tool_name"],
+                arguments_template=step_data.get("arguments_template", "{}"),
+                output_key=step_data.get("output_key", ""),
+            )
+        )
 
     manifest = SkillManifest(
         name=skill_data.get("name", path.stem),
@@ -72,6 +74,7 @@ def load_skill(
     if verify_signature and public_key and manifest.signature:
         try:
             from openjarvis.security.signing import verify_b64
+
             valid = verify_b64(
                 manifest.manifest_bytes(),
                 manifest.signature,
@@ -89,6 +92,7 @@ def load_skill(
     if scan_for_injection:
         try:
             from openjarvis.security.scanner import SecretScanner
+
             scanner = SecretScanner()
             for step in manifest.steps:
                 scan_result = scanner.scan(step.arguments_template)
@@ -104,4 +108,18 @@ def load_skill(
     return manifest
 
 
-__all__ = ["load_skill"]
+def discover_skills(directory: str | Path) -> list[SkillManifest]:
+    """Scan directory for TOML skill files and load them."""
+    directory = Path(directory).expanduser()
+    if not directory.exists():
+        return []
+    manifests = []
+    for toml_file in sorted(directory.glob("*.toml")):
+        try:
+            manifests.append(load_skill(toml_file))
+        except Exception:
+            continue
+    return manifests
+
+
+__all__ = ["load_skill", "discover_skills"]

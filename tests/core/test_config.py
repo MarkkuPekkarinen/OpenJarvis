@@ -74,7 +74,7 @@ class TestRecommendEngine:
             platform="linux",
             gpu=GpuInfo(vendor="amd", name="Radeon RX 7900 XTX"),
         )
-        assert recommend_engine(hw) == "vllm"
+        assert recommend_engine(hw) == "lemonade"
 
 
 class TestTomlLoading:
@@ -115,7 +115,7 @@ class TestSecurityConfig:
         assert sc.enabled is True
         assert sc.scan_input is True
         assert sc.scan_output is True
-        assert sc.mode == "warn"
+        assert sc.mode == "redact"
         assert sc.secret_scanner is True
         assert sc.pii_scanner is True
         assert sc.enforce_tool_confirmation is True
@@ -200,9 +200,10 @@ class TestAgentConfigNew:
 
     def test_no_temperature_or_max_tokens(self) -> None:
         ac = AgentConfig()
-        assert not hasattr(ac.__class__, "temperature") or isinstance(
-            getattr(ac.__class__, "temperature", None), property
-        ) is False
+        assert (
+            not hasattr(ac.__class__, "temperature")
+            or isinstance(getattr(ac.__class__, "temperature", None), property) is False
+        )
 
 
 class TestNestedEngineConfig:
@@ -288,9 +289,9 @@ class TestNestedLearningConfig:
     def test_loads_nested_toml(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
         toml_file.write_text(
-            '[learning]\nenabled = true\nupdate_interval = 50\n\n'
+            "[learning]\nenabled = true\nupdate_interval = 50\n\n"
             '[learning.routing]\npolicy = "learned"\n\n'
-            '[learning.metrics]\nlatency_weight = 0.5\n'
+            "[learning.metrics]\nlatency_weight = 0.5\n"
         )
         cfg = load_config(toml_file)
         assert cfg.learning.enabled is True
@@ -315,16 +316,14 @@ class TestNestedLearningConfig:
 class TestBackwardCompatMigration:
     def test_agent_temperature_migrates_to_intelligence(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
-        toml_file.write_text(
-            '[agent]\ntemperature = 0.3\nmax_tokens = 512\n'
-        )
+        toml_file.write_text("[agent]\ntemperature = 0.3\nmax_tokens = 512\n")
         cfg = load_config(toml_file)
         assert cfg.intelligence.temperature == 0.3
         assert cfg.intelligence.max_tokens == 512
 
     def test_memory_context_injection_migrates_to_agent(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
-        toml_file.write_text('[memory]\ncontext_injection = false\n')
+        toml_file.write_text("[memory]\ncontext_injection = false\n")
         cfg = load_config(toml_file)
         assert cfg.agent.context_from_memory is False
 
@@ -400,8 +399,7 @@ class TestSandboxConfig:
     def test_loads_from_toml(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
         toml_file.write_text(
-            '[sandbox]\nenabled = true\ntimeout = 600\n'
-            'runtime = "podman"\n'
+            '[sandbox]\nenabled = true\ntimeout = 600\nruntime = "podman"\n'
         )
         cfg = load_config(toml_file)
         assert cfg.sandbox.enabled is True
@@ -435,7 +433,7 @@ class TestSchedulerConfig:
     def test_loads_from_toml(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
         toml_file.write_text(
-            '[scheduler]\nenabled = true\npoll_interval = 30\n'
+            "[scheduler]\nenabled = true\npoll_interval = 30\n"
             'db_path = "/tmp/sched.db"\n'
         )
         cfg = load_config(toml_file)
@@ -447,6 +445,47 @@ class TestSchedulerConfig:
 # ---------------------------------------------------------------------------
 # WhatsApp Baileys channel config tests
 # ---------------------------------------------------------------------------
+
+
+class TestApplyTomlSectionListNormalization:
+    def test_apply_toml_section_list_to_str_field(self) -> None:
+        """TOML arrays assigned to str-typed fields should be joined with ','."""
+        from openjarvis.core.config import ToolsConfig, _apply_toml_section
+
+        target = ToolsConfig()
+        tools = ["code_interpreter", "web_search", "file_read"]
+        _apply_toml_section(target, {"enabled": tools})
+        assert isinstance(target.enabled, str)
+        assert target.enabled == "code_interpreter,web_search,file_read"
+
+    def test_apply_toml_section_list_to_property_setter(self) -> None:
+        """TOML arrays passed to backward-compat property setters should be
+        normalized to comma-separated strings, not passed as raw lists."""
+        from openjarvis.core.config import _apply_toml_section
+
+        target = LearningConfig()
+        _apply_toml_section(
+            target,
+            {
+                "reward_weights": ["accuracy=0.8", "latency=0.2"],
+            },
+        )
+        assert target.metrics.accuracy_weight == 0.8
+        assert target.metrics.latency_weight == 0.2
+
+    def test_apply_toml_section_agent_tools_list(self) -> None:
+        """Agent tools should work as a TOML array."""
+        from openjarvis.core.config import _apply_toml_section
+
+        target = AgentConfig()
+        _apply_toml_section(
+            target,
+            {
+                "tools": ["web_search", "http_request", "file_read"],
+            },
+        )
+        assert isinstance(target.tools, str)
+        assert target.tools == "web_search,http_request,file_read"
 
 
 class TestWhatsAppBaileysChannelConfig:
