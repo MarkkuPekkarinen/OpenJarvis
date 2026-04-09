@@ -216,7 +216,6 @@ class DiagnosisRunner:
             tool_call_records=agent_result.tool_call_records,
         )
 
-
     def _fallback_extract_clusters(self, diagnosis: str) -> list[FailureCluster]:
         """One-shot fallback: ask the teacher to emit only the JSON array.
 
@@ -266,14 +265,15 @@ def _parse_clusters(content: str) -> list[FailureCluster]:
     if fence_match:
         try:
             return _parse_cluster_list(fence_match.group(1))
-        except (json.JSONDecodeError, KeyError, TypeError):
-            logger.warning("Failed to parse clusters from JSON code fence")
+        except Exception as e:
+            logger.warning("Failed to parse clusters from JSON code fence: %s", e)
 
     # Fallback: try to find any JSON array in the content
-    for match in re.finditer(r"\[[\s\S]*?\]", content):
+    # Use greedy match to capture the full array (not just the first [...])
+    for match in re.finditer(r"\[[\s\S]*\]", content):
         try:
             return _parse_cluster_list(match.group(0))
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        except Exception:
             continue
 
     logger.warning("No failure clusters found in diagnosis output")
@@ -287,14 +287,28 @@ def _parse_cluster_list(json_str: str) -> list[FailureCluster]:
         return []
     clusters = []
     for item in data:
-        clusters.append(
-            FailureCluster(
-                id=item["id"],
-                description=item["description"],
-                sample_trace_ids=item.get("sample_trace_ids", []),
-                student_failure_rate=item["student_failure_rate"],
-                teacher_success_rate=item["teacher_success_rate"],
-                skill_gap=item["skill_gap"],
+        try:
+            # Clamp rates to 0-1 range (teacher sometimes outputs percentages)
+            failure_rate = float(item.get("student_failure_rate", 0))
+            success_rate = float(item.get("teacher_success_rate", 0))
+            if failure_rate > 1.0:
+                failure_rate = failure_rate / 100.0
+            if success_rate > 1.0:
+                success_rate = success_rate / 100.0
+            failure_rate = max(0.0, min(1.0, failure_rate))
+            success_rate = max(0.0, min(1.0, success_rate))
+
+            clusters.append(
+                FailureCluster(
+                    id=str(item.get("id", f"cluster-{len(clusters) + 1}")),
+                    description=str(item.get("description", "")),
+                    sample_trace_ids=[str(t) for t in item.get("sample_trace_ids", [])],
+                    student_failure_rate=failure_rate,
+                    teacher_success_rate=success_rate,
+                    skill_gap=str(item.get("skill_gap", "")),
+                )
             )
-        )
+        except Exception as e:
+            logger.warning("Skipping invalid cluster: %s", e)
+            continue
     return clusters
