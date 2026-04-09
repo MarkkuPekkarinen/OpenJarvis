@@ -47,7 +47,7 @@ class AddToolToAgentApplier(EditApplier):
                     break
                 if in_section and line.strip().startswith("tools"):
                     # Parse existing tool list and add new tool
-                    match = re.search(r'\[([^\]]*)\]', line)
+                    match = re.search(r"\[([^\]]*)\]", line)
                     if match:
                         existing = match.group(1)
                         if tool_name not in existing:
@@ -96,8 +96,8 @@ class RemoveToolFromAgentApplier(EditApplier):
                     break
                 if in_section and line.strip().startswith("tools"):
                     # Remove the tool from the list
-                    line = re.sub(rf',?\s*"{re.escape(tool_name)}"', '', line)
-                    line = re.sub(rf'"{re.escape(tool_name)}"\s*,?\s*', '', line)
+                    line = re.sub(rf',?\s*"{re.escape(tool_name)}"', "", line)
+                    line = re.sub(rf'"{re.escape(tool_name)}"\s*,?\s*', "", line)
                     lines[i] = line
                     break
             content = "\n".join(lines) + "\n"
@@ -150,7 +150,7 @@ class EditToolDescriptionApplier(EditApplier):
                         break
             content = "\n".join(lines) + "\n"
         else:
-            content += f"\n{section}\n" f'description = "{new_desc}"\n'
+            content += f'\n{section}\ndescription = "{new_desc}"\n'
 
         desc_path.write_text(content, encoding="utf-8")
         return ApplyResult(changed_files=[str(desc_path)])

@@ -54,10 +54,7 @@ class SetModelForQueryClassApplier(EditApplier):
             content = "\n".join(lines) + "\n"
         else:
             # Append the section
-            content += (
-                "\n[learning.routing.policy_map]\n"
-                f'{query_class} = "{model}"\n'
-            )
+            content += f'\n[learning.routing.policy_map]\n{query_class} = "{model}"\n'
 
         config_path.write_text(content, encoding="utf-8")
         return ApplyResult(changed_files=[str(config_path)])

@@ -16,8 +16,7 @@ from openjarvis.learning.distillation.models import (
 
 def _make_ctx(tmp_path: Path) -> ApplyContext:
     (tmp_path / "config.toml").write_text(
-        "[learning.routing.policy_map]\n"
-        'math = "qwen2.5-coder:3b"\n'
+        '[learning.routing.policy_map]\nmath = "qwen2.5-coder:3b"\n'
     )
     agents_dir = tmp_path / "agents" / "simple"
     agents_dir.mkdir(parents=True)

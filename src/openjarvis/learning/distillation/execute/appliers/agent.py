@@ -112,7 +112,9 @@ class SetAgentClassApplier(EditApplier):
         agent = _extract_agent_name(edit)
         new_class = edit.payload["new_class"]
         config_path = ctx.config_path
-        content = config_path.read_text(encoding="utf-8") if config_path.exists() else ""  # noqa: E501
+        content = (
+            config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+        )  # noqa: E501
 
         section = f"[agent.{agent}]"
         if section in content:
@@ -136,7 +138,7 @@ class SetAgentClassApplier(EditApplier):
                         break
             content = "\n".join(lines) + "\n"
         else:
-            content += f"\n{section}\n" f'class = "{new_class}"\n'
+            content += f'\n{section}\nclass = "{new_class}"\n'
 
         config_path.write_text(content, encoding="utf-8")
         return ApplyResult(changed_files=[str(config_path)])
@@ -161,7 +163,9 @@ class SetAgentParamApplier(EditApplier):
         param = edit.payload["param"]
         value = edit.payload["value"]
         config_path = ctx.config_path
-        content = config_path.read_text(encoding="utf-8") if config_path.exists() else ""  # noqa: E501
+        content = (
+            config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+        )  # noqa: E501
 
         section = f"[agent.{agent}]"
         if section in content:
