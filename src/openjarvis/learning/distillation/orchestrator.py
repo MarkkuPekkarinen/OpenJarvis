@@ -15,11 +15,15 @@ from pathlib import Path
 from typing import Any, Callable
 
 from openjarvis.learning.distillation.diagnose.runner import DiagnosisRunner
-from openjarvis.learning.distillation.execute.loop import execute_edits
+from openjarvis.learning.distillation.execute.base import ApplyContext
+from openjarvis.learning.distillation.execute.loop import _build_registry
+from openjarvis.learning.distillation.gate.benchmark_gate import BenchmarkGate
 from openjarvis.learning.distillation.gate.cold_start import check_readiness
 from openjarvis.learning.distillation.models import (
     AutonomyMode,
     BenchmarkSnapshot,
+    EditOutcome,
+    EditRiskTier,
     LearningSession,
     SessionStatus,
 )
@@ -187,17 +191,168 @@ class DistillationOrchestrator:
             session = session.model_copy(update={"status": SessionStatus.EXECUTING})
             self._session_store.save_session(session)
 
-            from openjarvis.learning.distillation.execute.base import ApplyContext
-
             ctx = ApplyContext(
                 openjarvis_home=self._home,
                 session_id=session_id,
             )
-            outcomes = execute_edits(
-                edits=plan.edits,
-                ctx=ctx,
-                autonomy_mode=self._autonomy,
-            )
+            registry = _build_registry()
+
+            gate: BenchmarkGate | None = None
+            if self._scorer is not None:
+                gate = BenchmarkGate(
+                    scorer=self._scorer,
+                    benchmark_version=self._bench_version,
+                    min_improvement=self._min_improvement,
+                    max_regression=self._max_regression,
+                    subsample_size=self._subsample_size,
+                )
+
+            session_seed = hash(session_id) % (2**31)
+            outcomes: list[EditOutcome] = []
+
+            for edit in plan.edits:
+                # Manual autonomy mode: everything goes to review
+                if self._autonomy == AutonomyMode.MANUAL:
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="pending_review",
+                            benchmark_delta=None,
+                            cluster_deltas={},
+                            error=None,
+                            applied_at=None,
+                        )
+                    )
+                    continue
+
+                # Manual risk tier: always skip
+                if edit.risk_tier == EditRiskTier.MANUAL:
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="skipped",
+                            benchmark_delta=None,
+                            cluster_deltas={},
+                            error="manual tier, requires explicit approval",
+                            applied_at=None,
+                        )
+                    )
+                    continue
+
+                # Review tier in tiered mode: route to pending
+                if (
+                    edit.risk_tier == EditRiskTier.REVIEW
+                    and self._autonomy == AutonomyMode.TIERED
+                ):
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="pending_review",
+                            benchmark_delta=None,
+                            cluster_deltas={},
+                            error=None,
+                            applied_at=None,
+                        )
+                    )
+                    continue
+
+                # Check if the op is supported
+                if not registry.is_supported(edit.op):
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="skipped",
+                            benchmark_delta=None,
+                            cluster_deltas={},
+                            error=f"op {edit.op.value} not implemented in v1",
+                            applied_at=None,
+                        )
+                    )
+                    continue
+
+                # Validate
+                applier = registry.get(edit.op)
+                validation = applier.validate(edit, ctx)
+                if not validation.ok:
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="rejected_by_gate",
+                            benchmark_delta=None,
+                            cluster_deltas={},
+                            error=validation.reason,
+                            applied_at=None,
+                        )
+                    )
+                    continue
+
+                # Apply the edit
+                try:
+                    applier.apply(edit, ctx)
+                except Exception as exc:
+                    logger.warning("Edit %s apply failed: %s", edit.id, exc)
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="rejected_by_gate",
+                            benchmark_delta=None,
+                            cluster_deltas={},
+                            error=str(exc),
+                            applied_at=None,
+                        )
+                    )
+                    continue
+
+                # If no scorer, accept directly (backward-compat with tests)
+                if gate is None:
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="applied",
+                            benchmark_delta=None,
+                            cluster_deltas={},
+                            error=None,
+                            applied_at=datetime.now(timezone.utc),
+                        )
+                    )
+                    continue
+
+                # Run the benchmark gate
+                before_snap = session.benchmark_before
+                gate_result = gate.evaluate(
+                    before=before_snap,
+                    session_seed=session_seed,
+                )
+
+                if gate_result.accepted:
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="applied",
+                            benchmark_delta=gate_result.delta,
+                            cluster_deltas={},
+                            error=None,
+                            applied_at=datetime.now(timezone.utc),
+                        )
+                    )
+                else:
+                    # Gate rejected — rollback the edit
+                    try:
+                        applier.rollback(edit, ctx)
+                    except Exception as rb_exc:
+                        logger.warning(
+                            "Edit %s rollback failed: %s", edit.id, rb_exc
+                        )
+                    outcomes.append(
+                        EditOutcome(
+                            edit_id=edit.id,
+                            status="rejected_by_gate",
+                            benchmark_delta=gate_result.delta,
+                            cluster_deltas={},
+                            error=gate_result.reason,
+                            applied_at=None,
+                        )
+                    )
 
             # Enqueue pending_review edits
             pending_queue = PendingQueue(self._home / "learning" / "pending_review")
@@ -213,7 +368,7 @@ class DistillationOrchestrator:
                 after_snap = self._scorer(
                     benchmark_version=self._bench_version,
                     subsample_size=self._subsample_size,
-                    seed=hash(session_id) % (2**31),
+                    seed=session_seed,
                 )
 
             # Determine final status
