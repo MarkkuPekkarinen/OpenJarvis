@@ -75,9 +75,7 @@ class TestLearningPlanner:
         from openjarvis.learning.distillation.plan.planner import LearningPlanner
 
         engine = MagicMock()
-        engine.generate.return_value = _make_teacher_response(
-            [_make_edit_dict()]
-        )
+        engine.generate.return_value = _make_teacher_response([_make_edit_dict()])
 
         planner = LearningPlanner(
             teacher_engine=engine,
@@ -124,9 +122,7 @@ class TestLearningPlanner:
         from openjarvis.learning.distillation.plan.planner import LearningPlanner
 
         engine = MagicMock()
-        engine.generate.return_value = _make_teacher_response(
-            [_make_edit_dict()]
-        )
+        engine.generate.return_value = _make_teacher_response([_make_edit_dict()])
 
         session_dir = tmp_path / "session-001"
         planner = LearningPlanner(
@@ -150,9 +146,7 @@ class TestLearningPlanner:
         from openjarvis.learning.distillation.plan.planner import LearningPlanner
 
         engine = MagicMock()
-        engine.generate.return_value = _make_teacher_response(
-            [_make_edit_dict()]
-        )
+        engine.generate.return_value = _make_teacher_response([_make_edit_dict()])
 
         clusters = [
             FailureCluster(
@@ -229,9 +223,7 @@ class TestLearningPlanner:
         from openjarvis.learning.distillation.plan.planner import LearningPlanner
 
         engine = MagicMock()
-        engine.generate.return_value = _make_teacher_response(
-            [_make_edit_dict()]
-        )
+        engine.generate.return_value = _make_teacher_response([_make_edit_dict()])
 
         session_dir = tmp_path / "session-001"
         planner = LearningPlanner(

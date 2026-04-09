@@ -120,8 +120,7 @@ class TestMaybeDowngradeToReplace:
         )
 
         original = (
-            "line1\nline2\nline3\nline4\nline5\n"
-            "line6\nline7\nline8\nline9\nline10\n"
+            "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
         )
         diff = (
             "--- a/prompt.md\n"
@@ -142,9 +141,7 @@ class TestMaybeDowngradeToReplace:
             expected_improvement="cluster-001",
             risk_tier=EditRiskTier.REVIEW,
         )
-        result = maybe_downgrade_to_replace(
-            edit, prompt_reader=lambda t: original
-        )
+        result = maybe_downgrade_to_replace(edit, prompt_reader=lambda t: original)
         assert result.op == EditOp.PATCH_SYSTEM_PROMPT
 
     def test_large_diff_downgrades_to_replace(self) -> None:
@@ -182,9 +179,7 @@ class TestMaybeDowngradeToReplace:
             expected_improvement="cluster-001",
             risk_tier=EditRiskTier.REVIEW,
         )
-        result = maybe_downgrade_to_replace(
-            edit, prompt_reader=lambda t: original
-        )
+        result = maybe_downgrade_to_replace(edit, prompt_reader=lambda t: original)
         assert result.op == EditOp.REPLACE_SYSTEM_PROMPT
         assert "new_content" in result.payload
         assert "new1" in result.payload["new_content"]

@@ -246,9 +246,7 @@ class LearningPlanner:
             for c in clusters
         ]
 
-    def _persist_trace(
-        self, content: str, cost_usd: float, result: dict
-    ) -> None:
+    def _persist_trace(self, content: str, cost_usd: float, result: dict) -> None:
         """Write the planner call to teacher_traces/plan.jsonl."""
         traces_dir = self._session_dir / "teacher_traces"
         traces_dir.mkdir(parents=True, exist_ok=True)
