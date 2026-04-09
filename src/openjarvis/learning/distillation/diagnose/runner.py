@@ -31,6 +31,22 @@ You are a meta-engineer analyzing the performance of a local AI assistant \
 called OpenJarvis. Your job is to diagnose why the local student model fails \
 on certain tasks and identify root cause patterns.
 
+IMPORTANT — OUTPUT REQUIREMENT: You MUST end your response with a JSON array \
+of failure clusters inside a ```json code fence. This is required. Example:
+
+```json
+[
+  {{
+    "id": "cluster-001",
+    "description": "Short description of this failure pattern",
+    "sample_trace_ids": ["trace-abc", "trace-def", "trace-ghi"],
+    "student_failure_rate": 0.75,
+    "teacher_success_rate": 0.95,
+    "skill_gap": "Explanation of the skill gap between student and teacher"
+  }}
+]
+```
+
 You have access to diagnostic tools that let you:
 - Browse and search the student's trace history
 - Read the student's current configuration, prompts, and tools
@@ -44,8 +60,7 @@ Your analysis should:
 to populate student_failure_rate and teacher_success_rate with real data.
 3. Describe the skill gap for each cluster.
 
-After your analysis, output the failure clusters as a JSON array inside a \
-```json code fence. Each cluster object must have these fields:
+Each cluster object in the final JSON array MUST have these fields:
 - id (string)
 - description (string)
 - sample_trace_ids (list of strings)
@@ -54,6 +69,8 @@ After your analysis, output the failure clusters as a JSON array inside a \
 - skill_gap (string)
 
 Budget: max ~{max_turns} tool calls, max ${max_cost_usd:.2f} USD.
+
+Remember: You MUST end your response with the ```json ... ``` block described above.
 """
 
 
@@ -182,12 +199,59 @@ class DiagnosisRunner:
         # Parse failure clusters from the diagnosis content
         clusters = _parse_clusters(agent_result.content)
 
+        # Fallback: if no clusters parsed, ask the teacher to emit only the JSON
+        if not clusters:
+            logger.warning(
+                "No clusters in primary diagnosis (%d chars, %d tool calls). "
+                "Attempting fallback extraction.",
+                len(agent_result.content),
+                len(agent_result.tool_call_records),
+            )
+            clusters = self._fallback_extract_clusters(agent_result.content)
+
         return DiagnosisResult(
             diagnosis_md=agent_result.content,
             clusters=clusters,
             cost_usd=agent_result.total_cost_usd,
             tool_call_records=agent_result.tool_call_records,
         )
+
+
+    def _fallback_extract_clusters(self, diagnosis: str) -> list[FailureCluster]:
+        """One-shot fallback: ask the teacher to emit only the JSON array.
+
+        Makes a single no-tools call with max 1 turn. If the response still
+        does not contain valid clusters, returns an empty list.
+
+        Parameters
+        ----------
+        diagnosis :
+            The full diagnosis text from the primary teacher run.
+        """
+        fallback_prompt = (
+            "Your diagnosis did not include the required JSON cluster array. "
+            "Here is your diagnosis:\n\n"
+            f"{diagnosis}\n\n"
+            "Now output ONLY a JSON array of failure clusters. No other text."
+        )
+
+        fallback_agent = TeacherAgent(
+            engine=self._teacher_engine,
+            model=self._teacher_model,
+            tools=[],  # no tools — single generation call
+            max_turns=1,
+            max_cost_usd=self._max_cost_usd,
+        )
+        try:
+            fallback_result = fallback_agent.run(fallback_prompt)
+        except Exception:
+            logger.exception("Fallback extraction TeacherAgent call failed")
+            return []
+
+        clusters = _parse_clusters(fallback_result.content)
+        if not clusters:
+            logger.warning("Fallback extraction also produced no clusters")
+        return clusters
 
 
 def _parse_clusters(content: str) -> list[FailureCluster]:
