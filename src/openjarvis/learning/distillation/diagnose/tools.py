@@ -209,9 +209,7 @@ def build_diagnostic_tools(
     # run_student_on_task
     # ------------------------------------------------------------------
     def _run_student_on_task(task_id: str) -> str:
-        sample = next(
-            (s for s in benchmark_samples if s.trace_id == task_id), None
-        )
+        sample = next((s for s in benchmark_samples if s.trace_id == task_id), None)
         if sample is None:
             return json.dumps({"error": f"Task {task_id} not found in benchmark"})
         result = student_runner(sample.query, session_id=session_id)
@@ -231,9 +229,7 @@ def build_diagnostic_tools(
     # run_self_on_task
     # ------------------------------------------------------------------
     def _run_self_on_task(task_id: str, max_tokens: int = 2048) -> str:
-        sample = next(
-            (s for s in benchmark_samples if s.trace_id == task_id), None
-        )
+        sample = next((s for s in benchmark_samples if s.trace_id == task_id), None)
         if sample is None:
             return json.dumps({"error": f"Task {task_id} not found in benchmark"})
         response = teacher_engine.generate(
@@ -255,9 +251,7 @@ def build_diagnostic_tools(
     # ------------------------------------------------------------------
     # compare_outputs
     # ------------------------------------------------------------------
-    def _compare_outputs(
-        student_output: str, teacher_output: str, task: str
-    ) -> str:
+    def _compare_outputs(student_output: str, teacher_output: str, task: str) -> str:
         score, reasoning = judge.score_trace(
             type(
                 "FakeTrace",

@@ -46,8 +46,7 @@ def _make_stub_trace_store(traces: list[_StubTrace] | None = None) -> MagicMock:
         (t for t in traces if t.trace_id == tid), None
     )
     store.search.return_value = [
-        {"trace_id": t.trace_id, "query": t.query, "score": 1.0}
-        for t in traces
+        {"trace_id": t.trace_id, "query": t.query, "score": 1.0} for t in traces
     ]
     return store
 

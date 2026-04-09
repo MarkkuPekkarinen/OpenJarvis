@@ -162,9 +162,7 @@ class TeacherAgent:
                         tool_result = json.dumps({"error": str(e)})
                         logger.warning("Tool %s raised: %s", tc_name, e)
                 else:
-                    tool_result = json.dumps(
-                        {"error": f"Unknown tool: {tc_name}"}
-                    )
+                    tool_result = json.dumps({"error": f"Unknown tool: {tc_name}"})
                 elapsed_ms = (time.monotonic() - start_time) * 1000
 
                 tool_call_records.append(
@@ -205,9 +203,7 @@ class TeacherAgent:
                 )
 
         # Exhausted max_turns
-        logger.warning(
-            "Teacher exhausted max_turns=%d", self._max_turns
-        )
+        logger.warning("Teacher exhausted max_turns=%d", self._max_turns)
         return TeacherAgentResult(
             content=final_content,
             turns=self._max_turns,
