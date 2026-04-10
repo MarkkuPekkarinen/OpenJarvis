@@ -6,14 +6,24 @@ Unlike GEPA/DSPy which optimize *what the agent says* (prompts, few-shot), disti
 
 ### Axis 1: Teacher Model (who does the diagnosis)
 
-| Config ID | Teacher Model | Cost/session | Hypothesis |
-|-----------|--------------|-------------|------------|
-| `T-opus` | `claude-opus-4-6` | ~$2-5 | Best diagnosis quality, most expensive |
-| `T-sonnet` | `claude-sonnet-4-6` | ~$0.30-1.00 | Good balance of quality and cost |
-| `T-gpt4o` | `gpt-4o` | ~$0.50-2.00 | Cross-provider comparison |
-| `T-local` | `qwen3.5:27b` (via Ollama) | $0 (GPU only) | Can a strong local model be its own teacher? |
+| Config ID | Teacher Model | Provider | Cost/session | Hypothesis |
+|-----------|--------------|----------|-------------|------------|
+| `T-opus` | `claude-opus-4-6` | Anthropic | ~$2-5 | Best diagnosis quality, most expensive |
+| `T-gpt54` | `gpt-5.4-2026-03-05` | OpenAI | ~$1-3 | Cross-provider: does GPT-5.4 diagnose differently? |
+| `T-gemini` | `gemini-3.1-pro-preview` | Google | ~$0.50-2 | Third provider: different diagnostic style? |
+| `T-qwen397b` | `Qwen/Qwen3.5-397B-A17B-FP8` | Local (vLLM, 8×H100) | $0 (GPU only) | Can a strong local MoE model be its own teacher? |
 
-**Key question:** How much does teacher quality matter? Is Sonnet 90% as good as Opus at 20% of the cost? Can a 27B local model meaningfully diagnose a 9B model's failures?
+**Key question:** How much does teacher quality matter? Do different providers diagnose different failure modes? Can a 397B-A17B local MoE model meaningfully diagnose a 9B dense model's failures?
+
+### Data Access Configs (same as GEPA/DSPy for fair comparison)
+
+Each experiment is run under all 3 data configs:
+
+| Config | Traces available | Benchmark answers | External data | Purpose |
+|--------|-----------------|-------------------|---------------|---------|
+| **C1** | External only (GeneralThought-430K + ADP) | Hidden | Yes | Tests whether diagnosis transfers from external tasks |
+| **C2** | Benchmark traces (queries visible, answers hidden) | Hidden | No | Tests diagnosis on actual task distribution |
+| **C3** | Both benchmark + external traces | Hidden | Yes | Best of both — most data for the teacher to analyze |
 
 ### Axis 2: Diagnosis Budget (how thoroughly the teacher investigates)
 
@@ -88,24 +98,24 @@ These answer the fundamental questions about distillation's value.
 
 **Experiment 1a: Teacher Model Ablation**
 - Fix: `S-9b`, `B-standard`, `A-auto`, `G-standard`, `I-single`
-- Vary: `T-opus`, `T-sonnet`, `T-gpt4o`, `T-local`
+- Vary: `T-opus`, `T-gpt54`, `T-gemini`, `T-qwen397b` × `C1`, `C2`, `C3`
 - Eval on: PinchBench, ToolCall-15, TauBench
-- **Runs: 4 teachers × 3 benchmarks = 12 sessions**
-- **Cost: ~$40 total teacher API**
+- **Runs: 4 teachers × 3 benchmarks × 3 data configs = 36 sessions**
+- **Cost: ~$120 total teacher API**
 
 **Experiment 1b: Budget Ablation**
-- Fix: `S-9b`, `T-sonnet`, `A-auto`, `G-standard`, `I-single`
-- Vary: `B-minimal`, `B-standard`, `B-thorough`, `B-exhaustive`
+- Fix: `S-9b`, `T-opus`, `A-auto`, `G-standard`, `I-single`
+- Vary: `B-minimal`, `B-standard`, `B-thorough`, `B-exhaustive` × `C1`, `C2`, `C3`
 - Eval on: PinchBench, ToolCall-15, TauBench
-- **Runs: 4 budgets × 3 benchmarks = 12 sessions**
-- **Cost: ~$60 total teacher API**
+- **Runs: 4 budgets × 3 benchmarks × 3 data configs = 36 sessions**
+- **Cost: ~$180 total teacher API**
 
 **Experiment 1c: Student Model Scaling**
-- Fix: `T-sonnet`, `B-standard`, `A-auto`, `G-standard`, `I-single`
-- Vary: `S-2b`, `S-9b`, `S-27b`
+- Fix: `T-opus`, `B-standard`, `A-auto`, `G-standard`, `I-single`
+- Vary: `S-2b`, `S-9b`, `S-27b` × `C1`, `C2`, `C3`
 - Eval on: PinchBench, ToolCall-15, TauBench
-- **Runs: 3 students × 3 benchmarks = 9 sessions**
-- **Cost: ~$20 total teacher API**
+- **Runs: 3 students × 3 benchmarks × 3 data configs = 27 sessions**
+- **Cost: ~$60 total teacher API**
 
 ### Phase 2: Gate & Autonomy (second priority)
 
@@ -141,14 +151,16 @@ These answer the fundamental questions about distillation's value.
 
 | Phase | Sessions | Est. Teacher Cost | Est. GPU Hours | Wall Time |
 |-------|---------|-------------------|---------------|-----------|
-| 1a: Teacher ablation | 12 | $40 | 6h eval | 1 day |
-| 1b: Budget ablation | 12 | $60 | 6h eval | 1 day |
-| 1c: Student scaling | 9 | $20 | 5h eval | 1 day |
-| 2a: Gate strictness | 4 | $8 | 2h eval | 0.5 day |
-| 2b: Autonomy mode | 3 | $6 | 1.5h eval | 0.5 day |
+| 1a: Teacher ablation | 36 | $120 | 18h eval | 2 days |
+| 1b: Budget ablation | 36 | $180 | 18h eval | 2 days |
+| 1c: Student scaling | 27 | $60 | 14h eval | 1.5 days |
+| 2a: Gate strictness | 12 | $24 | 6h eval | 0.5 day |
+| 2b: Autonomy mode | 9 | $18 | 5h eval | 0.5 day |
 | 3a: Iterative sessions | 9 | $20 | 5h eval | 1 day |
 | 3b: Cross-benchmark | 6 | $12 | 3h eval | 0.5 day |
-| **Total** | **55** | **~$166** | **~29h** | **~5 days** |
+| **Total** | **135** | **~$434** | **~69h** | **~8 days** |
+
+With parallelism (2-4 GPUs serving students, concurrent teacher API calls), wall time compresses to ~3-4 days.
 
 ---
 
