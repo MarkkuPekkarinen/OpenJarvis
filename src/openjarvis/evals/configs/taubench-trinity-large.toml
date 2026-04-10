@@ -8,7 +8,7 @@ description = "TauBench V2 on trinity-ai/Trinity-Large-Thinking (vLLM, TP=4)"
 
 [defaults]
 temperature = 0.7
-max_tokens = 4096
+max_tokens = 8192
 
 [judge]
 model = "gpt-4.1-mini"

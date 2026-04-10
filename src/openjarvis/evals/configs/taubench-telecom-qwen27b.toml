@@ -5,7 +5,7 @@ description = "TauBench V2 Telecom domain on Qwen/Qwen3.5-27B-FP8"
 
 [defaults]
 temperature = 0.7
-max_tokens = 4096
+max_tokens = 8192
 
 [judge]
 model = "gpt-5-mini-2025-08-07"

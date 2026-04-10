@@ -30,3 +30,4 @@ backend = "jarvis-agent"
 agent = "native_openhands"
 max_samples = 20
 tools = ["code_interpreter", "web_search", "file_read", "calculator", "think"]
+max_turns = 50

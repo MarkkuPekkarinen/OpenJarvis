@@ -7,7 +7,7 @@ description = "TauBench V2 on google/gemma-4-26B-A4B-it (vLLM, TP=4)"
 
 [defaults]
 temperature = 0.7
-max_tokens = 4096
+max_tokens = 8192
 
 [judge]
 model = "gpt-5-mini-2025-08-07"

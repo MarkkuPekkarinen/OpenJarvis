@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from openjarvis.evals.core.backend import InferenceBackend
@@ -26,6 +27,8 @@ class JarvisAgentBackend(InferenceBackend):
         gpu_metrics: bool = False,
         model: Optional[str] = None,
         max_turns: Optional[int] = None,
+        skills_enabled: bool = True,
+        overlay_dir: Optional[Path] = None,
     ) -> None:
         from openjarvis.system import SystemBuilder
 
@@ -42,12 +45,21 @@ class JarvisAgentBackend(InferenceBackend):
         builder.agent(agent_name)
         if tools:
             builder.tools(tools)
-        if max_turns is not None:
-            builder.max_turns(max_turns)
         # Propagate gpu_metrics to the runtime config so SystemBuilder
         # creates a GpuMonitor when building the InstrumentedEngine.
         if gpu_metrics:
             builder._config.telemetry.gpu_metrics = True
+        # Override the agent's per-run turn budget. JarvisConfig.agent.max_turns
+        # defaults to 10, which is too low for thinking/reasoning models on
+        # multi-step agentic benchmarks (Trinity-Large hit the cap on 25/50
+        # GAIA tasks before this was configurable per-eval).
+        if max_turns is not None:
+            builder._config.agent.max_turns = max_turns
+        # Plan 2B: per-condition skill switches.  Mutate the builder's
+        # config directly so SystemBuilder picks them up at build time.
+        builder._config.skills.enabled = skills_enabled
+        if overlay_dir is not None:
+            builder._config.learning.skills.overlay_dir = str(overlay_dir)
         self._system = builder.telemetry(telemetry).traces(True).build()
 
     def generate(
@@ -119,12 +131,6 @@ class JarvisAgentBackend(InferenceBackend):
 
         usage = result.get("usage", {})
         telemetry_data = result.get("_telemetry", {})
-        completion_tokens = usage.get("completion_tokens", 0)
-        # Compute throughput from accumulated tokens/elapsed when InstrumentedEngine
-        # doesn't aggregate it across multi-turn agent loops.
-        throughput = telemetry_data.get("throughput_tok_per_sec", 0.0)
-        if throughput == 0.0 and completion_tokens > 0 and elapsed > 0:
-            throughput = completion_tokens / elapsed
         return {
             "content": result.get("content", ""),
             "usage": usage,
@@ -137,7 +143,7 @@ class JarvisAgentBackend(InferenceBackend):
             "energy_joules": telemetry_data.get("energy_joules", 0.0),
             "power_watts": telemetry_data.get("power_watts", 0.0),
             "gpu_utilization_pct": telemetry_data.get("gpu_utilization_pct", 0.0),
-            "throughput_tok_per_sec": throughput,
+            "throughput_tok_per_sec": telemetry_data.get("throughput_tok_per_sec", 0.0),
             "trace_data": trace_data,
         }
 
