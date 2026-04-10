@@ -298,7 +298,6 @@ def expand_suite(suite: EvalSuiteConfig) -> List[RunConfig]:
                     sheets_spreadsheet_id=suite.run.sheets_spreadsheet_id,
                     sheets_worksheet=suite.run.sheets_worksheet,
                     sheets_credentials_path=suite.run.sheets_credentials_path,
-                    max_turns=suite.run.max_turns,
                 )
             )
 
