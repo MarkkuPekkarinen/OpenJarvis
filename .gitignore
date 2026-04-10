@@ -94,3 +94,6 @@ src/openjarvis/channels/whatsapp_baileys_bridge/node_modules/
 # SQLite in-memory artifacts
 :memory:
 MagicMock/
+
+# Second Repos
+Inline/
