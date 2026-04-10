@@ -132,7 +132,7 @@ def check_api_keys(providers_needed: set[str], console: Console) -> None:
         sys.exit(1)
 
     console.print("[green]All required API keys verified.[/green]")
-    click.confirm("\nProceed with evaluation?", default=True, abort=True)
+    # click.confirm("\nProceed with evaluation?", default=True, abort=True)  # Disabled for non-interactive runs
 
 # Known benchmarks and backends — mirrored from the evals framework so the
 # CLI can display them even when the (optional) evals package is not installed.
